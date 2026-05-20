@@ -1,0 +1,10 @@
+# OpenTeacher configuration template
+# Copy this to ~/.openteacher/config.yaml and customize
+
+model: gpt-4o                  # LLM model name
+api_base: https://api.openai.com/v1  # API endpoint (supports OpenAI-compatible APIs)
+language: zh                    # Teaching language (zh / en)
+teaching_style: socratic        # socratic / direct / coaching
+temperature: 0.7                # Response randomness (0.0 - 1.0)
+max_turns: 20                   # Max conversation turns per session
+context_limit: 8000             # Approximate token limit for context window
