@@ -19,7 +19,7 @@ def print_welcome() -> None:
         Panel.fit(
             "[bold cyan]OpenTeacher[/bold cyan] — CLI AI 智能老师\n"
             "用苏格拉底式提问 + 自适应学习路径帮你高效掌握任何知识领域。\n\n"
-            "[dim]输入内容开始对话  |  / 开头执行命令[/dim]\n"
+            "[dim]输入问题开始  |  /save 保存会话  |  /load 恢复会话[/dim]\n"
             "[dim]Tab 自动补全  |  Alt+Enter 换行  |  Ctrl+D 退出[/dim]",
             border_style="cyan",
             title="🎓 欢迎",

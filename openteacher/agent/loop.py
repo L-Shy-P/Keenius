@@ -1,16 +1,21 @@
-"""The core conversation loop for the OpenTeacher agent.
-
-This is the heart of the agent — it handles the back-and-forth between
-the user, the LLM, and tool execution.
-"""
+"""The core conversation loop for the OpenTeacher agent."""
 
 from __future__ import annotations
 import json
+import time
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 from openteacher import config
 from openteacher.agent import api_client, display
 from openteacher.tools.registry import registry
 from openteacher.tutor.prompts import build_system_prompt
+
+SESSIONS_DIR = config.DATA_DIR / "sessions"
+
+
+def _ensure_sessions_dir() -> None:
+    SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class ConversationLoop:
@@ -33,9 +38,11 @@ class ConversationLoop:
         self.messages: list[dict[str, Any]] = []
         self.turn_count = 0
         self.running = False
+        self._created_at = datetime.now().isoformat()
+        self._session_name: str | None = None
 
-    def start(self) -> str:
-        """Initialize the conversation with the system prompt. Returns opening message."""
+    def start(self) -> None:
+        """Initialize the conversation with system prompt. No API call — silent start."""
         system_prompt = build_system_prompt(
             subject=self.subject,
             language=self.language,
@@ -44,21 +51,11 @@ class ConversationLoop:
         self.messages = [{"role": "system", "content": system_prompt}]
         self.running = True
 
-        with display.spinner("正在与 AI 导师建立连接..."):
-            response = self._call_llm(with_tools=False)
-
-        assistant_msg = response.choices[0].message.content or ""
-        self.messages.append({"role": "assistant", "content": assistant_msg})
-        return assistant_msg
-
     def send_message(self, user_input: str) -> str:
-        """Process a user message and return the assistant response.
+        """Process a user message and return the assistant response."""
+        if not self.running:
+            self.start()
 
-        This runs one or more iterations of the agent loop:
-        1. Send user message + history to LLM
-        2. If LLM returns tool calls, execute them and loop
-        3. If LLM returns text, return it to the user
-        """
         self.turn_count += 1
         if self.turn_count > self.max_turns:
             return "已达到本轮对话的最大轮次限制。请输入 /new 开始新对话。"
@@ -69,9 +66,8 @@ class ConversationLoop:
             return self._run_agent_loop()
 
     def _run_agent_loop(self) -> str:
-        """Inner loop: call LLM, handle tool calls, repeat until final response."""
         tools = registry.get_tool_definitions()
-        max_iterations = 5  # max tool-calling iterations per user turn
+        max_iterations = 5
 
         for _ in range(max_iterations):
             response = self._call_llm(with_tools=bool(tools))
@@ -100,7 +96,6 @@ class ConversationLoop:
         )
 
     def _handle_tool_calls(self, message) -> None:
-        """Execute tool calls and add results to messages."""
         tool_results = []
         for tc in message.tool_calls:
             tool_name = tc.function.name
@@ -112,43 +107,115 @@ class ConversationLoop:
                     args = json.loads(tc.function.arguments)
                 except json.JSONDecodeError:
                     args = {}
-
                 display.print_tool_call(tool_name, args)
                 result = tool_def.handler(**args)
                 display.print_tool_result(result)
 
-            tool_results.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": result,
-                }
-            )
+            tool_results.append({
+                "role": "tool",
+                "tool_call_id": tc.id,
+                "content": result,
+            })
 
-        self.messages.append(
-            {
-                "role": "assistant",
-                "content": message.content,
-                "tool_calls": [
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {
-                            "name": tc.function.name,
-                            "arguments": tc.function.arguments,
-                        },
-                    }
-                    for tc in message.tool_calls
-                ],
-            }
-        )
+        self.messages.append({
+            "role": "assistant",
+            "content": message.content,
+            "tool_calls": [
+                {"id": tc.id, "type": "function", "function": {
+                    "name": tc.function.name,
+                    "arguments": tc.function.arguments,
+                }}
+                for tc in message.tool_calls
+            ],
+        })
         self.messages.extend(tool_results)
 
     def reset(self) -> None:
-        """Reset the conversation."""
         self.messages = []
         self.turn_count = 0
+        self.running = False
+        self._session_name = None
+
+    # ── Session persistence ────────────────────────────────────────
+
+    def to_dict(self) -> dict:
+        return {
+            "subject": self.subject,
+            "language": self.language,
+            "teaching_style": self.teaching_style,
+            "model": self.model,
+            "temperature": self.temperature,
+            "turn_count": self.turn_count,
+            "created_at": self._created_at,
+            "saved_at": datetime.now().isoformat(),
+            "messages": self.messages,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> ConversationLoop:
+        loop = cls(
+            subject=data.get("subject", ""),
+            language=data.get("language", "zh"),
+            teaching_style=data.get("teaching_style", "socratic"),
+            model=data.get("model"),
+        )
+        loop.temperature = data.get("temperature", 0.7)
+        loop.turn_count = data.get("turn_count", 0)
+        loop._created_at = data.get("created_at", datetime.now().isoformat())
+        loop.messages = data.get("messages", [])
+        loop.running = True
+        return loop
+
+    def save(self, name: str | None = None) -> str:
+        """Save session to disk. Returns the session name."""
+        _ensure_sessions_dir()
+        save_name = name or self._session_name or _auto_session_name(self)
+        self._session_name = save_name
+        filepath = SESSIONS_DIR / f"{save_name}.json"
+        filepath.write_text(
+            json.dumps(self.to_dict(), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        return save_name
+
+    def load(self, name: str) -> bool:
+        """Load session from disk. Returns True on success."""
+        filepath = SESSIONS_DIR / f"{name}.json"
+        if not filepath.exists():
+            return False
+        data = json.loads(filepath.read_text(encoding="utf-8"))
+        loaded = self.from_dict(data)
+        self.__dict__.update(loaded.__dict__)
+        self._session_name = name
+        return True
+
+    @staticmethod
+    def list_sessions() -> list[dict]:
+        """List all saved sessions with metadata."""
+        _ensure_sessions_dir()
+        sessions = []
+        for f in sorted(SESSIONS_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+            try:
+                data = json.loads(f.read_text(encoding="utf-8"))
+                sessions.append({
+                    "name": f.stem,
+                    "subject": data.get("subject", ""),
+                    "model": data.get("model", ""),
+                    "messages": len(data.get("messages", [])),
+                    "created_at": data.get("created_at", "")[:16],
+                    "saved_at": data.get("saved_at", "")[:16],
+                })
+            except json.JSONDecodeError:
+                continue
+        return sessions
 
     @property
     def history_length(self) -> int:
         return len(self.messages)
+
+
+def _auto_session_name(loop: ConversationLoop) -> str:
+    """Generate a default session name from subject and date."""
+    base = loop.subject.replace(" ", "-") if loop.subject else "session"
+    date_str = datetime.now().strftime("%Y%m%d-%H%M")
+    return f"{base}-{date_str}"

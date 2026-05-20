@@ -28,7 +28,10 @@ from openteacher.config import DATA_DIR
 
 SLASH_COMMANDS: dict[str, dict] = {
     "session": {
-        "/new":     ("开始新对话（重置上下文）", lambda ctx: ctx.get("loop").reset() or "对话已重置。你想学什么？"),
+        "/new":     ("开始新对话（重置上下文）", lambda ctx: ctx.get("loop").reset() or "对话已重置。输入问题开始吧！"),
+        "/save":    ("保存当前会话 /save [名称]", lambda ctx, a: _cmd_save(ctx, a), True),
+        "/load":    ("加载历史会话 /load <名称>", lambda ctx, a: _cmd_load(ctx, a), True),
+        "/sessions": ("列出所有已保存的会话", lambda ctx: _cmd_list_sessions()),
         "/subject": ("切换学习主题 /subject <主题>", lambda ctx, a: setattr(ctx["loop"], "subject", a) or f"主题已切换为: {a}", True),
         "/style":   ("切换教学风格 /style <socratic|direct|coaching>", lambda ctx, a: setattr(ctx["loop"], "teaching_style", a) or f"教学风格已切换为: {a}", True),
     },
@@ -218,6 +221,43 @@ def show_progress() -> str:
     return "\n".join(lines)
 
 
+# ── Session commands ──────────────────────────────────────────────────
+
+def _cmd_save(ctx: dict, args: str) -> str:
+    loop = ctx["loop"]
+    name = args.strip() if args.strip() else ""
+    saved_name = loop.save(name if name else None)
+    return f"✓ 会话已保存为 [cyan]{saved_name}[/cyan]"
+
+
+def _cmd_load(ctx: dict, args: str) -> str:
+    name = args.strip()
+    if not name:
+        return "请指定会话名称。用法: /load <名称>\n输入 /sessions 查看可用的会话列表。"
+    loop = ctx["loop"]
+    if loop.load(name):
+        loop.subject = loop.subject or ""
+        return f"✓ 已加载会话 [cyan]{name}[/cyan]\n  {loop.turn_count} 轮对话, {len(loop.messages)} 条消息\n\n输入内容继续对话。"
+    return f"未找到会话: {name}\n输入 /sessions 查看可用的会话列表。"
+
+
+def _cmd_list_sessions() -> str:
+    sessions = ConversationLoop.list_sessions()
+    if not sessions:
+        return "暂无保存的会话。输入 /save 保存当前会话。"
+    lines = ["\n📂 [bold]已保存的会话[/bold]\n"]
+    for s in sessions:
+        lines.append(
+            f"  [cyan]{s['name']:20s}[/cyan] "
+            f"📚 {s['subject'] or '(无主题)':16s} "
+            f"[dim]{s['model']}[/dim]  "
+            f"💬 {s['messages']}条  "
+            f"{s['saved_at']}"
+        )
+    lines.append("\n[dim]使用 /load <名称> 加载会话[/dim]")
+    return "\n".join(lines)
+
+
 # ── Help ──────────────────────────────────────────────────────────────
 
 def show_help() -> str:
@@ -305,16 +345,11 @@ def run_shell(
     print_welcome()
 
     try:
-        opening = loop.start()
+        loop.start()
     except Exception as e:
         _handle_startup_error(e)
-        # Drop into offline REPL so user can type /setup
         _run_offline_repl(loop)
         return
-
-    print_assistant_header()
-    print_markdown(opening)
-    print_assistant_header()
 
     _run_repl_loop(loop)
 
@@ -344,10 +379,12 @@ def _run_repl_loop(loop: ConversationLoop) -> None:
                 multiline=False,
             ).strip()
         except (EOFError, KeyboardInterrupt):
+            _auto_save_on_exit(loop)
             print_info("\n再见！学习愉快 📚")
             break
 
         if user_input == "EXIT":
+            _auto_save_on_exit(loop)
             print_info("再见！学习愉快 📚")
             break
         if user_input == "INTERRUPT":
@@ -360,6 +397,7 @@ def _run_repl_loop(loop: ConversationLoop) -> None:
         cmd_result = handle_slash_command(user_input, context)
         if cmd_result is not None:
             if cmd_result == "EXIT":
+                _auto_save_on_exit(loop)
                 print_info("再见！学习愉快 📚")
                 break
             console.print(cmd_result)
@@ -381,6 +419,16 @@ def _run_repl_loop(loop: ConversationLoop) -> None:
         print_assistant_header()
         print_markdown(response)
         print_assistant_header()
+
+
+def _auto_save_on_exit(loop: ConversationLoop) -> None:
+    """Auto-save session if it has meaningful conversation."""
+    if loop.turn_count > 0:
+        try:
+            name = loop.save()
+            print_info(f"会话已自动保存为: {name}")
+        except Exception:
+            pass
 
 
 def _run_offline_repl(loop: ConversationLoop) -> None:
@@ -406,10 +454,12 @@ def _run_offline_repl(loop: ConversationLoop) -> None:
                 multiline=False,
             ).strip()
         except (EOFError, KeyboardInterrupt):
+            _auto_save_on_exit(loop)
             print_info("\n再见！")
             break
 
         if user_input in ("EXIT", "/quit", "/q"):
+            _auto_save_on_exit(loop)
             print_info("再见！")
             break
 
