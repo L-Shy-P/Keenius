@@ -19,7 +19,8 @@ def print_welcome() -> None:
         Panel.fit(
             "[bold cyan]OpenTeacher[/bold cyan] — CLI AI 智能老师\n"
             "用苏格拉底式提问 + 自适应学习路径帮你高效掌握任何知识领域。\n\n"
-            "[dim]输入 /help 查看所有命令  |  /setup 配置 API  |  /quit 退出[/dim]",
+            "[dim]输入内容开始对话  |  / 开头执行命令[/dim]\n"
+            "[dim]Tab 自动补全  |  Alt+Enter 换行  |  Ctrl+D 退出[/dim]",
             border_style="cyan",
             title="🎓 欢迎",
         )
@@ -32,10 +33,33 @@ def print_assistant_header() -> None:
     console.print(Rule(style="cyan"))
 
 
+_TOOL_EMOJI = {
+    "create_quiz": "📝",
+    "check_answer": "🔍",
+    "give_examples": "💡",
+    "explain_deeper": "🔬",
+    "summarize_lesson": "📋",
+    "spaced_review_reminder": "⏰",
+    "track_progress": "📌",
+    "save_note": "📓",
+}
+
+
 def print_tool_call(tool_name: str, tool_args: dict) -> None:
-    """Display a tool call being made."""
-    args_str = ", ".join(f"{k}={v}" for k, v in tool_args.items())
-    console.print(f"  [dim]🔧 {tool_name}({args_str})[/dim]")
+    """Display a tool call being made — clean one-line preview."""
+    emoji = _TOOL_EMOJI.get(tool_name, "🔧")
+    # Show first arg concisely
+    preview = ""
+    for k, v in tool_args.items():
+        s = str(v)
+        if len(s) > 40:
+            s = s[:40] + "..."
+        preview = s
+        break
+    label = f"{emoji} {tool_name}"
+    if preview:
+        label += f": {preview}"
+    console.print(f"  [dim]{label}[/dim]")
 
 
 def print_tool_result(result: str) -> None:
