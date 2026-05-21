@@ -304,8 +304,20 @@ def track_progress(concept: str, status: str, notes: str = "") -> str:
     },
 )
 def save_note(title: str, content: str, tags: list[str] | None = None) -> str:
+    import json, datetime
+    from openteacher.config import DATA_DIR
+    notes_dir = DATA_DIR / "notes"
+    notes_dir.mkdir(parents=True, exist_ok=True)
+    safe_name = title.strip().replace(" ", "-")[:60]
+    note_file = notes_dir / f"{safe_name}.json"
+    note_data = {
+        "title": title, "content": content,
+        "tags": tags or [],
+        "created_at": datetime.datetime.now().isoformat(),
+    }
+    note_file.write_text(json.dumps(note_data, ensure_ascii=False, indent=2), encoding="utf-8")
     tag_str = ", ".join(tags) if tags else "通用"
-    return f"📓 **笔记已保存**: '{title}' [{tag_str}]\n{content}"
+    return f"📓 笔记已保存: '{title}' [{tag_str}] → {note_file}"
 
 
 # ============================================================
@@ -400,6 +412,72 @@ def manage_plan(
     description="展示当前学习计划概览，包括所有课程及完成状态。",
     parameters={"type": "object", "properties": {}, "required": []},
 )
+@register_tool(
+    name="write_lesson_content",
+    description=(
+        "写入或更新一堂课的详细教学内容。lesson_id 指定课程编号，"
+        "section 指定要更新的部分：definition(定义原文+直观解释)、"
+        "examples(方法典例)、quiz(当堂测试)、extension(拓展内容)。"
+        "content 是自由格式文本，Agent 应写入完整的课程内容。"
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "lesson_id": {"type": "integer", "description": "课程编号"},
+            "section": {
+                "type": "string",
+                "enum": ["definition", "examples", "quiz", "extension"],
+                "description": "课程部分",
+            },
+            "content": {"type": "string", "description": "该部分的完整内容（Markdown 格式）"},
+            "intuitive_explanation": {
+                "type": "string",
+                "description": "直观解释版本（仅 definition 部分需要）",
+            },
+        },
+        "required": ["lesson_id", "section", "content"],
+    },
+)
+def write_lesson_content(
+    lesson_id: int, section: str, content: str, intuitive_explanation: str = ""
+) -> str:
+    from openteacher.config import PLANS_DIR
+    import json, datetime
+
+    plan_files = list(PLANS_DIR.glob("*.json"))
+    if not plan_files:
+        return "未找到学习计划。请先用 manage_plan 创建。"
+    latest_plan = max(plan_files, key=lambda p: p.stat().st_mtime)
+    plan = json.loads(latest_plan.read_text(encoding="utf-8"))
+
+    for lesson in plan["lessons"]:
+        if lesson["id"] == lesson_id:
+            if section == "definition":
+                lesson["sections"]["definition"]["original"] = content
+                if intuitive_explanation:
+                    lesson["sections"]["definition"]["intuitive"] = intuitive_explanation
+            elif section == "examples":
+                lesson["sections"]["examples"].append({
+                    "content": content, "added_at": datetime.datetime.now().isoformat(),
+                })
+            elif section == "quiz":
+                lesson["sections"]["quiz"].append({
+                    "content": content, "added_at": datetime.datetime.now().isoformat(),
+                })
+            elif section == "extension":
+                lesson["sections"]["extension"] = content
+
+            plan["updated_at"] = datetime.datetime.now().isoformat()
+            from openteacher.tutor.planner import save_plan
+            save_plan(plan["subject"], plan)
+
+            sections_cn = {"definition": "定义与解释", "examples": "方法典例",
+                          "quiz": "当堂测试", "extension": "拓展内容"}
+            return f"📝 第 {lesson_id} 课「{lesson['title']}」的 {sections_cn.get(section, section)} 已写入"
+
+    return f"未找到第 {lesson_id} 课。"
+
+
 def plan_summary_tool() -> str:
     from openteacher.config import PLANS_DIR
     import json
