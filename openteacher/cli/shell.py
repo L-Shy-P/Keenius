@@ -156,15 +156,20 @@ def run_setup_wizard() -> str:
     print_setup_banner()
     provider_selector()
 
-    choice = prompt("选择 Provider [1-4] (默认: 1) ").strip() or "1"
-    provider_config = {
-        "1": ("OPENAI_API_KEY", "https://api.openai.com/v1", "gpt-4o"),
-        "2": ("DEEPSEEK_API_KEY", "https://api.deepseek.com/v1", "deepseek-chat"),
-        "3": ("ANTHROPIC_API_KEY", "https://api.anthropic.com/v1", "claude-sonnet-4-6"),
-        "4": ("API_KEY", "", ""),
-    }
-    env_key, default_base, default_model = provider_config.get(choice, provider_config["1"])
+    # Keyboard-driven provider selection
+    providers = [
+        ("1", "OpenAI", "OPENAI_API_KEY", "https://api.openai.com/v1", "gpt-4o"),
+        ("2", "DeepSeek", "DEEPSEEK_API_KEY", "https://api.deepseek.com/v1", "deepseek-chat"),
+        ("3", "Anthropic", "ANTHROPIC_API_KEY", "https://api.anthropic.com/v1", "claude-sonnet-4-6"),
+        ("4", "自定义", "API_KEY", "", ""),
+    ]
+    provider_opts = [{"num": p[0], "text": f"{p[1]} ({p[3]})"} for p in providers]
+    choice_idx = _pick_provider_interactive(provider_opts)
+    if choice_idx is None:
+        return "配置取消。"
+    _, name, env_key, default_base, default_model = providers[choice_idx]
 
+    console.print(f"[dim]已选择: {name}[/dim]")
     console.print()
     api_key = prompt("API Key (输入会隐藏): ", is_password=True).strip()
     if not api_key:
@@ -172,7 +177,7 @@ def run_setup_wizard() -> str:
         return "配置取消。"
 
     console.print()
-    if choice == "4":
+    if choice_idx == 3:  # custom
         base_url = prompt("Base URL: ").strip()
         if not base_url:
             display_error("Base URL 不能为空，配置取消。")
@@ -188,8 +193,45 @@ def run_setup_wizard() -> str:
 
     print_success(f"配置完成！已保存至 {config.CONFIG_DIR / '.env'}")
     console.print(f"  [dim]{env_key} | {base_url} | {model}[/dim]")
-    console.print("[dim]输入 [bold]/new[/bold] 开始新对话，或直接输入问题。[/dim]")
     return ""
+
+
+def _pick_provider_interactive(options: list) -> int | None:
+    """Keyboard-driven provider selection. Returns index or None."""
+    from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit import PromptSession as PS
+
+    kb = KeyBindings()
+    idx = [0]
+
+    def _toolbar():
+        lines = []
+        for i, opt in enumerate(options):
+            marker = "▶" if i == idx[0] else " "
+            lines.append(f"{marker} [{opt['num']}] {opt['text']}")
+        lines.append("↑↓ 选择  Enter 确认  Esc 取消")
+        return "  ".join(lines)
+
+    @kb.add("up")
+    def _(event): idx[0] = (idx[0] - 1) % len(options)
+
+    @kb.add("down")
+    def _(event): idx[0] = (idx[0] + 1) % len(options)
+
+    @kb.add("enter")
+    def _(event): event.app.exit(result=idx[0])
+
+    @kb.add("escape")
+    def _(event): event.app.exit(result=None)
+
+    @kb.add("c-c")
+    def _(event): event.app.exit(result=None)
+
+    ps = PS(key_bindings=kb, bottom_toolbar=_toolbar, style=CHAT_STYLE)
+    try:
+        return ps.prompt("")
+    except (EOFError, KeyboardInterrupt):
+        return None
 
 
 # ── Show config ───────────────────────────────────────────────────────
@@ -314,13 +356,37 @@ def _cmd_save(ctx: dict, args: str) -> str:
 
 def _cmd_load(ctx: dict, args: str) -> str:
     name = args.strip()
-    if not name:
-        return "请指定会话名称。用法: /load <名称>\n输入 /sessions 查看可用的会话列表。"
+    if name:
+        # Direct load by name
+        loop = ctx["loop"]
+        if loop.load(name):
+            loop.subject = loop.subject or ""
+            return f"✓ 已加载会话 [cyan]{name}[/cyan]\n  {loop.turn_count} 轮对话, {len(loop.messages)} 条消息\n\n输入内容继续对话。"
+        return f"未找到会话: {name}\n输入 /sessions 查看可用的会话列表。"
+
+    # No name given — show interactive picker
+    sessions = ConversationLoop.list_sessions()
+    if not sessions:
+        return "暂无保存的会话。"
+    from openteacher.agent.sessions import load_session_by_name
+    options = []
+    for s in sessions:
+        options.append({
+            "num": len(options) + 1,
+            "text": f"{s['name']:20s}  📚 {s['subject'] or '(无)':16s}  💬 {s['messages']}条  {s['saved_at']}",
+            "session": s,
+        })
+    options.append({"num": len(options) + 1, "text": "取消"})
+    choice_idx = _pick_from_list(options, "📂 加载会话 — ↑↓ 选择  Enter 加载  Esc 取消")
+    if choice_idx is None or choice_idx >= len(sessions):
+        return "已取消。"
+    s = sessions[choice_idx]
+    data = load_session_by_name(s["name"], s["source"])
+    if data is None:
+        return "加载失败。"
     loop = ctx["loop"]
-    if loop.load(name):
-        loop.subject = loop.subject or ""
-        return f"✓ 已加载会话 [cyan]{name}[/cyan]\n  {loop.turn_count} 轮对话, {len(loop.messages)} 条消息\n\n输入内容继续对话。"
-    return f"未找到会话: {name}\n输入 /sessions 查看可用的会话列表。"
+    loop.__dict__.update(ConversationLoop.from_dict(data).__dict__)
+    return f"✓ 已加载会话 [cyan]{s['name']}[/cyan]\n  输入内容继续对话。"
 
 
 def _cmd_mode(ctx: dict, args: str) -> str:
@@ -356,17 +422,66 @@ def _cmd_list_sessions() -> str:
     sessions = ConversationLoop.list_sessions()
     if not sessions:
         return "暂无保存的会话。输入 /save 保存当前会话。"
-    lines = ["\n📂 [bold]已保存的会话[/bold]\n"]
+
+    from openteacher.agent.sessions import load_session_by_name
+
+    # Build options for keyboard picker
+    options = []
     for s in sessions:
-        lines.append(
-            f"  [cyan]{s['name']:20s}[/cyan] "
-            f"📚 {s['subject'] or '(无主题)':16s} "
-            f"[dim]{s['model']}[/dim]  "
-            f"💬 {s['messages']}条  "
-            f"{s['saved_at']}"
-        )
-    lines.append("\n[dim]使用 /load <名称> 加载会话[/dim]")
-    return "\n".join(lines)
+        options.append({
+            "num": len(options) + 1,
+            "text": f"{s['name']:20s}  📚 {s['subject'] or '(无)':16s}  💬 {s['messages']}条  {s['saved_at']}",
+            "session": s,
+        })
+    options.append({"num": len(options) + 1, "text": "取消"})
+
+    choice_idx = _pick_from_list(options, "📂 已保存的会话 — ↑↓ 选择  Enter 加载  Esc 取消")
+    if choice_idx is None or choice_idx >= len(sessions):
+        return "已取消。"
+
+    s = sessions[choice_idx]
+    data = load_session_by_name(s["name"], s["source"])
+    if data:
+        return f"✓ 已加载会话: {s['name']}\n  输入内容继续对话。"
+    return "加载失败。"
+
+
+def _pick_from_list(options: list, title: str = "") -> int | None:
+    """Generic keyboard list picker. Returns index or None."""
+    from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit import PromptSession as PS
+
+    kb = KeyBindings()
+    idx = [0]
+
+    def _toolbar():
+        lines = [f"[bold]{title}[/bold]"] if title else []
+        for i, opt in enumerate(options):
+            marker = "▶" if i == idx[0] else " "
+            lines.append(f"{marker} [{opt['num']}] {opt['text'][:100]}")
+        lines.append("↑↓ 选择  Enter 确认  Esc 取消")
+        return "  ".join(lines)
+
+    @kb.add("up")
+    def _(event): idx[0] = (idx[0] - 1) % len(options)
+
+    @kb.add("down")
+    def _(event): idx[0] = (idx[0] + 1) % len(options)
+
+    @kb.add("enter")
+    def _(event): event.app.exit(result=idx[0])
+
+    @kb.add("escape")
+    def _(event): event.app.exit(result=None)
+
+    @kb.add("c-c")
+    def _(event): event.app.exit(result=None)
+
+    ps = PS(key_bindings=kb, bottom_toolbar=_toolbar, style=CHAT_STYLE)
+    try:
+        return ps.prompt("")
+    except (EOFError, KeyboardInterrupt):
+        return None
 
 
 # ── Help ──────────────────────────────────────────────────────────────
@@ -811,26 +926,15 @@ def _run_offline_repl(loop: ConversationLoop) -> None:
 
 
 def _toolbar_text(loop: ConversationLoop) -> str:
-    """Bottom toolbar showing phase, model, subject, turns."""
-    import re
-
+    """Bottom toolbar showing phase, mode, model, turns."""
     phase_icons = {"diagnosis": "🔍 诊断", "learning": "📖 学习", "end": "🏁 结束"}
-    parts = [phase_icons.get(loop.phase, "💬")]
+    modes = {"guided": "引导", "direct": "讲解", "mixed": "混合"}
 
+    parts = [phase_icons.get(loop.phase, "💬")]
     if loop.subject:
         parts.append(f"| 📚 {loop.subject}")
-    modes = {"guided": "引导", "direct": "讲解", "mixed": "混合"}
-    mode_str = modes.get(loop.mode, loop.mode)
-    parts.append(f"| 🎯 {mode_str}")
+    parts.append(f"| 🎯 {modes.get(loop.mode, loop.mode)}")
     parts.append(f"| 🤖 {loop.model}")
-
-    # If last assistant message has options, hint the user
-    for msg in reversed(loop.messages):
-        if msg.get("role") == "assistant" and msg.get("content"):
-            if re.search(r"\[\d+\]", msg["content"]):
-                parts.append("| [dim]按数字选择[/dim]")
-            break
-
     parts.append(f"| 💬 {loop.turn_count}")
     return " ".join(parts)
 
