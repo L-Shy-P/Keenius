@@ -516,9 +516,10 @@ def _run_repl_loop(loop: ConversationLoop) -> None:
             console.print(cmd_result)
             continue
 
-        # Agent interaction
+        # Agent interaction — resolve numeric choices if applicable
+        resolved_input = _resolve_choice_input(user_input, loop)
         try:
-            response = loop.send_message(user_input)
+            response = loop.send_message(resolved_input)
         except Exception as e:
             msg = str(e)
             if "401" in msg or "Incorrect API key" in msg or "invalid_api_key" in msg:
@@ -594,16 +595,69 @@ def _run_offline_repl(loop: ConversationLoop) -> None:
 
 
 def _toolbar_text(loop: ConversationLoop) -> str:
-    """Bottom toolbar showing model, turns, subject."""
-    parts = []
-    parts.append(f" 🤖 {loop.model}")
+    """Bottom toolbar showing phase, model, subject, turns."""
+    import re
+
+    phase_icons = {"diagnosis": "🔍 诊断", "learning": "📖 学习", "end": "🏁 结束"}
+    parts = [phase_icons.get(loop.phase, "💬")]
+
     if loop.subject:
         parts.append(f"| 📚 {loop.subject}")
-    parts.append(f"| 💬 轮次: {loop.turn_count}")
+    parts.append(f"| 🤖 {loop.model}")
+
+    # If last assistant message has options, hint the user
+    for msg in reversed(loop.messages):
+        if msg.get("role") == "assistant" and msg.get("content"):
+            if re.search(r"\[\d+\]", msg["content"]):
+                parts.append("| [dim]按数字选择[/dim]")
+            break
+
+    parts.append(f"| 💬 {loop.turn_count}")
     return " ".join(parts)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────
+
+def _resolve_choice_input(user_input: str, loop) -> str:
+    """If user typed a number and the last assistant message has [N] options,
+    resolve to the option text. Supports '2' or '2 notes here'."""
+    import re
+
+    stripped = user_input.strip()
+
+    # Check if input starts with a number (possibly followed by notes)
+    num_match = re.match(r"^(\d+)\s*(.*)", stripped)
+    if not num_match:
+        return user_input
+
+    num = int(num_match.group(1))
+    notes = num_match.group(2).strip()
+
+    # Find the last assistant message with content
+    last_text = ""
+    for msg in reversed(loop.messages):
+        if msg.get("role") == "assistant" and msg.get("content"):
+            last_text = msg["content"]
+            break
+
+    if not last_text:
+        return user_input
+
+    # Extract [N] options from last assistant message
+    options: dict[int, str] = {}
+    for m in re.finditer(r"\[(\d+)\]\s*(.+?)(?=\n\[|\n\n|\Z)", last_text, re.DOTALL):
+        opt_num = int(m.group(1))
+        opt_text = m.group(2).strip()
+        options[opt_num] = opt_text
+
+    if num not in options:
+        return user_input  # Not a valid option number, send as-is
+
+    choice = options[num]
+    if notes:
+        return f"{choice}。补充说明：{notes}"
+    return choice
+
 
 def _maybe_track_progress_from_response(response: str) -> None:
     import re
