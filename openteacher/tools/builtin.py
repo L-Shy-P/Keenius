@@ -5,7 +5,131 @@ Tools are registered via the @register_tool decorator — just importing this mo
 is enough to make them available to the agent.
 """
 
-from openteacher.tools.registry import register_tool
+from openteacher.tools.registry import register_tool, tool_result, tool_error
+
+# ============================================================
+# Standard file I/O tools (Claude Code / Hermes compatible format)
+# ============================================================
+
+
+@register_tool(
+    name="read_file",
+    description=(
+        "读取文件内容。支持文本文件和 PDF。返回带行号的内容。"
+        "使用绝对路径。要读取大文件时使用 offset 和 limit 参数分段读取。"
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "file_path": {
+                "type": "string",
+                "description": "要读取的文件的绝对路径",
+            },
+            "offset": {
+                "type": "integer",
+                "description": "起始行号（1-indexed，默认 1）",
+                "default": 1,
+                "minimum": 1,
+            },
+            "limit": {
+                "type": "integer",
+                "description": "最大读取行数（默认 500，最大 2000）",
+                "default": 500,
+                "maximum": 2000,
+            },
+        },
+        "required": ["file_path"],
+    },
+)
+def read_file(file_path: str, offset: int = 1, limit: int = 500) -> str:
+    from pathlib import Path
+
+    p = Path(file_path).expanduser().resolve()
+    if not p.exists():
+        return tool_error(f"文件不存在: {file_path}")
+    if p.is_dir():
+        return tool_error(f"路径是目录而非文件: {file_path}")
+
+    try:
+        content = p.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return tool_error(f"无法以 UTF-8 解码文件（可能是二进制文件）: {file_path}")
+    except Exception as e:
+        return tool_error(f"读取失败: {e}")
+
+    lines = content.splitlines()
+    total = len(lines)
+    start = max(0, offset - 1)
+    end = min(start + limit, total)
+    selected = lines[start:end]
+
+    # Line-numbered output (matching Claude Code `cat -n` format)
+    numbered = "\n".join(f"{start + i + 1:6d}\t{line}" for i, line in enumerate(selected))
+
+    result = {
+        "content": numbered,
+        "total_lines": total,
+        "start_line": start + 1,
+        "end_line": end,
+        "truncated": end < total,
+    }
+    if result["truncated"]:
+        result["hint"] = f"文件还有 {total - end} 行。使用 offset={end + 1} 继续读取。"
+    return tool_result(result)
+
+
+@register_tool(
+    name="write_file",
+    description=(
+        "将内容写入文件。会完全覆盖已有内容。"
+        "只能写入 ~/.openteacher/ 目录或当前项目目录下的文件。"
+        "不会自动创建父目录——如需创建目录请先用 Bash 工具。"
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "file_path": {
+                "type": "string",
+                "description": "要写入的文件的绝对路径",
+            },
+            "content": {
+                "type": "string",
+                "description": "要写入文件的完整内容",
+            },
+        },
+        "required": ["file_path", "content"],
+    },
+)
+def write_file(file_path: str, content: str) -> str:
+    from pathlib import Path
+
+    p = Path(file_path).expanduser().resolve()
+    allowed_dirs = [
+        Path.home() / ".openteacher",
+        Path.cwd(),
+    ]
+    if not any(str(p).startswith(str(d)) for d in allowed_dirs):
+        return tool_error(
+            f"安全限制：只能写入 ~/.openteacher/ 或当前项目目录下的文件。\n"
+            f"目标路径: {file_path}"
+        )
+
+    try:
+        existed = p.exists()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        old_size = p.stat().st_size if existed else 0
+        p.write_text(content, encoding="utf-8")
+        new_size = p.stat().st_size
+        action = "更新" if existed else "创建"
+        return tool_result({
+            "action": action,
+            "file_path": str(p),
+            "bytes_written": new_size,
+            "previous_bytes": old_size if existed else 0,
+        })
+    except Exception as e:
+        return tool_error(f"写入失败: {e}")
+
 
 # ============================================================
 # Quiz & Assessment tools

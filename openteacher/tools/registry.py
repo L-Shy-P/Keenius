@@ -77,6 +77,32 @@ class ToolRegistry:
         return list(self._tools.keys())
 
 
+def tool_result(data: dict | str = None, **kwargs) -> str:
+    """Standard tool success result. Accepts dict or keyword args. Returns JSON string.
+
+    Usage:
+        tool_result({"content": "...", "lines": 42})
+        tool_result(success=True, count=10)
+    """
+    import json
+    if isinstance(data, str):
+        return json.dumps({"result": data}, ensure_ascii=False)
+    if data is not None:
+        return json.dumps(data, ensure_ascii=False)
+    return json.dumps(kwargs, ensure_ascii=False)
+
+
+def tool_error(message: str, **extra) -> str:
+    """Standard tool error result. Returns JSON string with error key.
+
+    Usage:
+        tool_error("文件不存在: /path/to/file")
+        tool_error("写入失败", code=403)
+    """
+    import json
+    return json.dumps({"error": message, **extra}, ensure_ascii=False)
+
+
 # Global tool registry
 registry = ToolRegistry()
 register_tool = registry.register
