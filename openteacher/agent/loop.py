@@ -61,74 +61,109 @@ class ConversationLoop:
             return "已达到本轮对话的最大轮次限制。请输入 /new 开始新对话。"
 
         self.messages.append({"role": "user", "content": user_input})
-
-        with display.spinner("思考中..."):
-            return self._run_agent_loop()
+        return self._run_agent_loop()
 
     def _run_agent_loop(self) -> str:
-        tools = registry.get_tool_definitions()
         max_iterations = 5
-
         for _ in range(max_iterations):
-            response = self._call_llm(with_tools=bool(tools))
-            choice = response.choices[0]
-            message = choice.message
-
-            if message.tool_calls:
-                self._handle_tool_calls(message)
-                continue
-            elif message.content:
-                self.messages.append({"role": "assistant", "content": message.content})
-                return message.content
-            else:
+            response = self._stream_llm()
+            if response is None:
                 return "（没有收到有效回复，请重试）"
-
+            return response
         return "（工具调用次数过多，请简化你的问题）"
 
-    def _call_llm(self, with_tools: bool = True):
-        tools = registry.get_tool_definitions() if with_tools else None
-        return api_client.call_llm(
+    def _stream_llm(self) -> str | None:
+        """Stream LLM response, displaying text live. Returns final text or re-enters for tool calls."""
+        from rich.live import Live
+        from rich.markdown import Markdown
+
+        tools = registry.get_tool_definitions()
+        stream = api_client.call_llm(
             messages=self.messages,
-            tools=tools,
+            tools=tools or None,
             model=self.model,
             temperature=self.temperature,
-            stream=False,
+            stream=True,
         )
 
-    def _handle_tool_calls(self, message) -> None:
-        tool_results = []
-        for tc in message.tool_calls:
-            tool_name = tc.function.name
-            tool_def = registry.get_tool(tool_name)
-            if tool_def is None:
-                result = f"未知工具: {tool_name}"
-            else:
-                try:
-                    args = json.loads(tc.function.arguments)
-                except json.JSONDecodeError:
-                    args = {}
-                display.print_tool_call(tool_name, args)
-                result = tool_def.handler(**args)
-                display.print_tool_result(result)
+        content_parts: list[str] = []
+        tool_call_buffer: dict[int, dict] = {}  # index → {id, name, args_str}
 
-            tool_results.append({
+        with Live("", console=display.console, refresh_per_second=20, transient=False) as live:
+            for chunk in stream:
+                delta = chunk.choices[0].delta if chunk.choices else None
+                if delta is None:
+                    continue
+
+                # Text delta
+                if delta.content:
+                    content_parts.append(delta.content)
+                    live.update(Markdown("".join(content_parts)))
+
+                # Tool call delta
+                if delta.tool_calls:
+                    for tc in delta.tool_calls:
+                        idx = tc.index
+                        if idx not in tool_call_buffer:
+                            tool_call_buffer[idx] = {"id": tc.id or "", "name": tc.function.name if tc.function else "", "args": ""}
+                        buf = tool_call_buffer[idx]
+                        if tc.id:
+                            buf["id"] = tc.id
+                        if tc.function:
+                            if tc.function.name:
+                                buf["name"] = tc.function.name
+                            if tc.function.arguments:
+                                buf["args"] += tc.function.arguments
+
+        # After stream ends
+        if tool_call_buffer:
+            text = "".join(content_parts)
+            self._handle_streamed_tool_calls(tool_call_buffer, text)
+            return self._run_agent_loop()  # recurse after tool execution
+
+        if content_parts:
+            text = "".join(content_parts)
+            self.messages.append({"role": "assistant", "content": text})
+            return text
+
+        return None
+
+    def _handle_streamed_tool_calls(self, tool_call_buffer: dict, prefix_text: str) -> None:
+        """Build message from streamed tool calls and execute them."""
+        tool_msgs = []
+        for idx in sorted(tool_call_buffer.keys()):
+            buf = tool_call_buffer[idx]
+            name = buf["name"]
+            display.print_tool_call(name, {"args": buf["args"][:50] + "..." if len(buf["args"]) > 50 else buf["args"]})
+            try:
+                args = json.loads(buf["args"])
+            except json.JSONDecodeError:
+                args = {}
+            tool_def = registry.get_tool(name)
+            if tool_def:
+                result = tool_def.handler(**args)
+            else:
+                result = f"未知工具: {name}"
+            display.print_tool_result(result)
+            tool_msgs.append({
                 "role": "tool",
-                "tool_call_id": tc.id,
+                "tool_call_id": buf["id"],
                 "content": result,
             })
 
         self.messages.append({
             "role": "assistant",
-            "content": message.content,
+            "content": prefix_text or None,
             "tool_calls": [
-                {"id": tc.id, "type": "function", "function": {
-                    "name": tc.function.name,
-                    "arguments": tc.function.arguments,
-                }}
-                for tc in message.tool_calls
+                {
+                    "id": buf["id"],
+                    "type": "function",
+                    "function": {"name": buf["name"], "arguments": buf["args"]},
+                }
+                for buf in tool_call_buffer.values()
             ],
         })
-        self.messages.extend(tool_results)
+        self.messages.extend(tool_msgs)
 
     def reset(self) -> None:
         self.messages = []

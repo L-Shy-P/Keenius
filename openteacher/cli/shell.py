@@ -415,9 +415,9 @@ def _run_repl_loop(loop: ConversationLoop) -> None:
                 print_error(f"请求失败: {msg}")
             continue
 
+        # Streaming already displayed the response live — just add spacing
         _maybe_track_progress_from_response(response)
         print_assistant_header()
-        print_markdown(response)
         print_assistant_header()
 
 
