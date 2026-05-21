@@ -314,6 +314,21 @@ def save_progress(concept: str, status: str, notes: str = "") -> None:
     progress_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def save_assessment(dimension: str, value: str, concept: str = "", evidence: str = "") -> None:
+    import json
+    assess_file = DATA_DIR / "student_profile.json"
+    data = json.loads(assess_file.read_text(encoding="utf-8")) if assess_file.exists() else []
+    entry = {"dimension": dimension, "value": value, "concept": concept, "evidence": evidence}
+    # Replace existing assessment for same dimension+concept
+    for item in data:
+        if item.get("dimension") == dimension and item.get("concept") == concept:
+            item.update(entry)
+            break
+    else:
+        data.append(entry)
+    assess_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 # ── Prompt styling ────────────────────────────────────────────────────
 
 CHAT_STYLE = Style.from_dict({
@@ -509,10 +524,19 @@ def _maybe_track_progress_from_response(response: str) -> None:
 
 def monkeypatch_track_progress():
     from openteacher.tools.registry import registry
-    original = registry.get_tool("track_progress")
-    if original is None:
-        return
-    def _persistent_tracker(concept: str, status: str, notes: str = "") -> str:
-        save_progress(concept, status, notes)
-        return original.handler(concept=concept, status=status, notes=notes)
-    original.handler = _persistent_tracker
+
+    # Persist track_progress
+    tp = registry.get_tool("track_progress")
+    if tp is not None:
+        def _persistent_tracker(concept: str, status: str, notes: str = "") -> str:
+            save_progress(concept, status, notes)
+            return tp.handler(concept=concept, status=status, notes=notes)
+        tp.handler = _persistent_tracker
+
+    # Persist assess_student
+    ae = registry.get_tool("assess_student")
+    if ae is not None:
+        def _persistent_assess(dimension: str, value: str, concept: str = "", evidence: str = "") -> str:
+            save_assessment(dimension, value, concept, evidence)
+            return ae.handler(dimension=dimension, value=value, concept=concept, evidence=evidence)
+        ae.handler = _persistent_assess

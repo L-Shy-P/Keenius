@@ -183,6 +183,78 @@ def spaced_review_reminder(concept: str, days_since_learned: int = 1) -> str:
 
 
 # ============================================================
+# Student profiling
+# ============================================================
+
+
+@register_tool(
+    name="assess_student",
+    description=(
+        "记录或更新学生画像评估。每次评估一个维度。"
+        "可以在对话中自然地调用此工具，无需告知学生。"
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "dimension": {
+                "type": "string",
+                "enum": [
+                    "learning_orientation",
+                    "concept_level",
+                    "understanding_depth",
+                    "application_ability",
+                    "overall_summary",
+                ],
+                "description": (
+                    "评估维度: learning_orientation(学习倾向), "
+                    "concept_level(某概念的知识层级), "
+                    "understanding_depth(理解深度), "
+                    "application_ability(应用能力), "
+                    "overall_summary(总体评估)"
+                ),
+            },
+            "value": {
+                "type": "string",
+                "description": (
+                    "评估值。learning_orientation: theory_focused / practice_focused / "
+                    "exam_focused / curiosity_driven / project_driven。"
+                    "concept_level: L0-L5。"
+                    "understanding_depth: surface / deep / transfer。"
+                    "application_ability: concrete / abstract / both。"
+                    "overall_summary: 自由文本"
+                ),
+            },
+            "concept": {
+                "type": "string",
+                "description": "当 dimension 为 concept_level 时，指定概念名称",
+            },
+            "evidence": {
+                "type": "string",
+                "description": "评估依据：学生的哪句话或哪个行为让你做出此判断",
+            },
+        },
+        "required": ["dimension", "value"],
+    },
+)
+def assess_student(
+    dimension: str, value: str, concept: str = "", evidence: str = ""
+) -> str:
+    concept_str = f" [{concept}]" if concept else ""
+    labels = {
+        "learning_orientation": "🎯 学习倾向",
+        "concept_level": "📊 知识层级",
+        "understanding_depth": "🔍 理解深度",
+        "application_ability": "🛠️ 应用能力",
+        "overall_summary": "📋 总体评估",
+    }
+    label = labels.get(dimension, dimension)
+    result = f"{label}{concept_str}: {value}"
+    if evidence:
+        result += f"\n  依据: {evidence}"
+    return result
+
+
+# ============================================================
 # Progress tracking
 # ============================================================
 
