@@ -248,6 +248,24 @@ def show_profile() -> str:
     if not concept_levels and not skill_levels:
         lines.append("  [dim]尚未评估具体知识维度[/dim]")
 
+    # Cognitive / personality traits
+    cognitive_fields = {
+        "memory_style": "🧠 记忆模式",
+        "cognitive_strength": "💡 认知优势",
+        "grasp_speed": "⚡ 理解速度",
+        "discipline": "🎯 自律程度",
+    }
+    for field, label in cognitive_fields.items():
+        if data.get(field):
+            lines.append(f"  {label}: {data[field]}")
+
+    # Notes
+    notes = data.get("cognitive_notes", {})
+    if notes:
+        for field, info in notes.items():
+            if info.get("evidence"):
+                lines.append(f"    [dim]依据: {info['evidence']}[/dim]")
+
     lines.append(f"\n[dim]数据文件: {pf}[/dim]")
     return "\n".join(lines)
 
@@ -376,25 +394,30 @@ def save_assessment(dimension: str, value: str, concept: str = "", evidence: str
         profile = {
             "created_at": datetime.datetime.now().isoformat(),
             "learning_orientation": "",
-            "concept_levels": {},   # { "concept_name": {"level": "C2", "evidence": "...", "updated_at": "..."} }
-            "skill_levels": {},     # { "concept_name": {"level": "S3", "evidence": "...", "updated_at": "..."} }
+            "concept_levels": {},
+            "skill_levels": {},
+            # Cognitive / personality (global, cross-subject)
+            "memory_style": "",
+            "cognitive_strength": "",
+            "grasp_speed": "",
+            "discipline": "",
+            "overall_summary": "",
+            "cognitive_notes": {},
             "history": [],
         }
 
     now = datetime.datetime.now().isoformat()
 
-    if dimension == "learning_orientation":
-        profile["learning_orientation"] = value
-    elif dimension == "overall_summary":
-        profile["overall_summary"] = value
+    if dimension in ("learning_orientation", "overall_summary"):
+        profile[dimension] = value
     elif dimension == "concept_level":
         profile["concept_levels"][concept] = {"level": value, "evidence": evidence, "updated_at": now}
     elif dimension == "skill_level":
         profile["skill_levels"][concept] = {"level": value, "evidence": evidence, "updated_at": now}
-    elif dimension == "understanding_depth":
-        profile.setdefault("understanding_depth", {})[concept or "overall"] = {"level": value, "evidence": evidence, "updated_at": now}
-    elif dimension == "application_ability":
-        profile.setdefault("application_ability", {})[concept or "overall"] = {"level": value, "evidence": evidence, "updated_at": now}
+    elif dimension in ("memory_style", "cognitive_strength", "grasp_speed", "discipline"):
+        # Cognitive/personality traits: write directly to profile root
+        profile[dimension] = value
+        profile.setdefault("cognitive_notes", {})[dimension] = {"value": value, "evidence": evidence, "updated_at": now}
 
     profile["history"].append({
         "dimension": dimension, "value": value, "concept": concept,

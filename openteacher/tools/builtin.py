@@ -190,8 +190,9 @@ def spaced_review_reminder(concept: str, days_since_learned: int = 1) -> str:
 @register_tool(
     name="assess_student",
     description=(
-        "记录或更新学生画像评估。每次评估一个维度。"
-        "可以在对话中自然地调用此工具，无需告知学生。"
+        "记录或更新学生画像。学科层用 concept_level/skill_level，"
+        "认知层和性格层用 memory_style/cognitive_strength/grasp_speed/discipline。"
+        "可以在对话中自然调用，无需告知学生。"
     ),
     parameters={
         "type": "object",
@@ -201,36 +202,34 @@ def spaced_review_reminder(concept: str, days_since_learned: int = 1) -> str:
                 "enum": [
                     "learning_orientation",
                     "concept_level",
-                    "understanding_depth",
-                    "application_ability",
+                    "skill_level",
+                    "memory_style",
+                    "cognitive_strength",
+                    "grasp_speed",
+                    "discipline",
                     "overall_summary",
                 ],
                 "description": (
-                    "评估维度: learning_orientation(学习倾向), "
-                    "concept_level(某概念的知识层级), "
-                    "understanding_depth(理解深度), "
-                    "application_ability(应用能力), "
-                    "overall_summary(总体评估)"
+                    "学科层: concept_level(C0-C4)/skill_level(S0-S4)/learning_orientation。"
+                    "认知层(全局): memory_style(understanding_driven/repetition_driven/visual_spatial/logical_deduction), "
+                    "cognitive_strength(spatial/logical/verbal/intuitive/systematic), "
+                    "grasp_speed(fast/moderate/slow), "
+                    "discipline(high/moderate/low)。"
+                    "性格层(全局): learning_orientation(theory_focused/practice_focused/exam_focused/curiosity_driven/project_driven)。"
+                    "overall_summary: 跨学科总体评估"
                 ),
             },
             "value": {
                 "type": "string",
-                "description": (
-                    "评估值。learning_orientation: theory_focused / practice_focused / "
-                    "exam_focused / curiosity_driven / project_driven。"
-                    "concept_level: L0-L5。"
-                    "understanding_depth: surface / deep / transfer。"
-                    "application_ability: concrete / abstract / both。"
-                    "overall_summary: 自由文本"
-                ),
+                "description": "评估值，对应 dimension 的选项之一或自由文本",
             },
             "concept": {
                 "type": "string",
-                "description": "当 dimension 为 concept_level 时，指定概念名称",
+                "description": "concept_level 或 skill_level 时指定概念/技能名称",
             },
             "evidence": {
                 "type": "string",
-                "description": "评估依据：学生的哪句话或哪个行为让你做出此判断",
+                "description": "学生哪句话/哪个行为让你做出此判断",
             },
         },
         "required": ["dimension", "value"],
@@ -242,9 +241,12 @@ def assess_student(
     concept_str = f" [{concept}]" if concept else ""
     labels = {
         "learning_orientation": "🎯 学习倾向",
-        "concept_level": "📊 知识层级",
-        "understanding_depth": "🔍 理解深度",
-        "application_ability": "🛠️ 应用能力",
+        "concept_level": "📊 概念层级",
+        "skill_level": "🛠️ 技能层级",
+        "memory_style": "🧠 记忆模式",
+        "cognitive_strength": "💡 认知优势",
+        "grasp_speed": "⚡ 理解速度",
+        "discipline": "🎯 自律程度",
         "overall_summary": "📋 总体评估",
     }
     label = labels.get(dimension, dimension)
