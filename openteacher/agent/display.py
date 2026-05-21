@@ -89,7 +89,12 @@ def print_success(msg: str) -> None:
 
 def spinner(text: str = "思考中..."):
     """Return a Rich spinner context manager."""
-    return console.status(f"[cyan]{text}[/cyan]", spinner="dots")
+    return console.status(f"[dim]{text}[/dim]", spinner="dots")
+
+
+def print_thinking() -> None:
+    """Print a thinking indicator to show before streaming starts."""
+    console.print("[dim]⏳ 思考中...[/dim]", end="\r")
 
 
 def show_progress_table(progress: dict[str, str]) -> None:

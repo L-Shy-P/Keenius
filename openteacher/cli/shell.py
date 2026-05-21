@@ -476,8 +476,7 @@ def save_assessment(dimension: str, value: str, concept: str = "", evidence: str
 
 CHAT_STYLE = Style.from_dict({
     "prompt": "bold cyan",
-    "toolbar": "bg:#1a1a2e #888888",
-    "bottom-toolbar": "bg:#1a1a2e #aaaaaa",
+    "bottom-toolbar": "dim italic",
 })
 
 
@@ -641,10 +640,9 @@ def _run_repl_loop(loop: ConversationLoop) -> None:
             console.print(cmd_result)
             continue
 
-        # Agent interaction — resolve numeric choices if applicable
-        resolved_input = _resolve_choice_input(user_input, loop)
+        # Agent interaction
         try:
-            response = loop.send_message(resolved_input)
+            response = loop.send_message(user_input)
         except Exception as e:
             msg = str(e)
             if "401" in msg or "Incorrect API key" in msg or "invalid_api_key" in msg:
@@ -656,8 +654,81 @@ def _run_repl_loop(loop: ConversationLoop) -> None:
 
         # Streaming already displayed the response live — just add spacing
         _maybe_track_progress_from_response(response)
+
+        # Interactive choice picking
+        options = _extract_options(response)
+        if options:
+            selected = _pick_choice_interactive(options, session, loop)
+            if selected:
+                loop.messages.append({"role": "user", "content": selected})
+                response = loop.send_message(selected)
+                print_assistant_header()
+                continue
+
         print_assistant_header()
-        print_assistant_header()
+
+
+def _extract_options(text: str) -> list | None:
+    import re
+    options = []
+    for m in re.finditer(r"\[(\d+)\]\s*(.+?)(?=\n\[|\n\n|\Z)", text, re.DOTALL):
+        options.append({"num": int(m.group(1)), "text": m.group(2).strip()})
+    return options if len(options) >= 2 else None  # need at least 2 to offer choice
+
+
+def _pick_choice_interactive(options: list, session, loop):
+    """Arrow keys to navigate, Enter to select, Space for notes, Esc skip."""
+    from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit import PromptSession as PS
+
+    kb = KeyBindings()
+    idx = [0]
+    note_mode = [False]
+    notes = [""]
+
+    def _toolbar():
+        lines = []
+        for i, opt in enumerate(options):
+            marker = "▶" if i == idx[0] else " "
+            lines.append(f"{marker} [{opt['num']}] {opt['text'][:100]}")
+        if note_mode[0]:
+            lines.append(f"  备注: {notes[0]}_")
+        else:
+            lines.append("↑↓ 选择  Enter 确认  Space 备注  Esc 跳过")
+        return "  ".join(lines)
+
+    @kb.add("up")
+    def _(event): idx[0] = (idx[0] - 1) % len(options)
+
+    @kb.add("down")
+    def _(event): idx[0] = (idx[0] + 1) % len(options)
+
+    @kb.add("enter")
+    def _(event):
+        result = options[idx[0]]["text"]
+        if notes[0]:
+            result += f"。补充: {notes[0]}"
+        event.app.exit(result=result)
+
+    @kb.add("space")
+    def _(event): note_mode[0] = True
+
+    @kb.add("escape")
+    def _(event): event.app.exit(result=None)
+
+    @kb.add("<any>")
+    def _(event):
+        if note_mode[0]:
+            if event.data == "backspace":
+                notes[0] = notes[0][:-1]
+            elif len(event.data) == 1:
+                notes[0] += event.data
+
+    ps = PS(key_bindings=kb, bottom_toolbar=_toolbar, style=CHAT_STYLE)
+    try:
+        return ps.prompt("")
+    except (EOFError, KeyboardInterrupt):
+        return None
 
 
 def _auto_save_on_exit(loop: ConversationLoop) -> None:
@@ -745,47 +816,6 @@ def _toolbar_text(loop: ConversationLoop) -> str:
 
 
 # ── Helpers ───────────────────────────────────────────────────────────
-
-def _resolve_choice_input(user_input: str, loop) -> str:
-    """If user typed a number and the last assistant message has [N] options,
-    resolve to the option text. Supports '2' or '2 notes here'."""
-    import re
-
-    stripped = user_input.strip()
-
-    # Check if input starts with a number (possibly followed by notes)
-    num_match = re.match(r"^(\d+)\s*(.*)", stripped)
-    if not num_match:
-        return user_input
-
-    num = int(num_match.group(1))
-    notes = num_match.group(2).strip()
-
-    # Find the last assistant message with content
-    last_text = ""
-    for msg in reversed(loop.messages):
-        if msg.get("role") == "assistant" and msg.get("content"):
-            last_text = msg["content"]
-            break
-
-    if not last_text:
-        return user_input
-
-    # Extract [N] options from last assistant message
-    options: dict[int, str] = {}
-    for m in re.finditer(r"\[(\d+)\]\s*(.+?)(?=\n\[|\n\n|\Z)", last_text, re.DOTALL):
-        opt_num = int(m.group(1))
-        opt_text = m.group(2).strip()
-        options[opt_num] = opt_text
-
-    if num not in options:
-        return user_input  # Not a valid option number, send as-is
-
-    choice = options[num]
-    if notes:
-        return f"{choice}。补充说明：{notes}"
-    return choice
-
 
 def _maybe_track_progress_from_response(response: str) -> None:
     import re

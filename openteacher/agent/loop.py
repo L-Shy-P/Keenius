@@ -92,7 +92,8 @@ class ConversationLoop:
         content_parts: list[str] = []
         tool_call_buffer: dict[int, dict] = {}  # index → {id, name, args_str}
 
-        with Live("", console=display.console, refresh_per_second=20, transient=False) as live:
+        first_token = True
+        with Live("[dim]⏳ 思考中...[/dim]", console=display.console, refresh_per_second=20, transient=False) as live:
             for chunk in stream:
                 delta = chunk.choices[0].delta if chunk.choices else None
                 if delta is None:
@@ -100,6 +101,8 @@ class ConversationLoop:
 
                 # Text delta
                 if delta.content:
+                    if first_token:
+                        first_token = False
                     content_parts.append(delta.content)
                     live.update(Markdown("".join(content_parts)))
 
