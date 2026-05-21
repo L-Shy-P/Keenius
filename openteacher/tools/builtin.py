@@ -306,3 +306,107 @@ def track_progress(concept: str, status: str, notes: str = "") -> str:
 def save_note(title: str, content: str, tags: list[str] | None = None) -> str:
     tag_str = ", ".join(tags) if tags else "通用"
     return f"📓 **笔记已保存**: '{title}' [{tag_str}]\n{content}"
+
+
+# ============================================================
+# Learning plan tools
+# ============================================================
+
+
+@register_tool(
+    name="manage_plan",
+    description=(
+        "管理学习计划。可以创建新计划、添加课程、更新课程状态。"
+        "action: create(创建空计划) / add_lesson(添加一堂课) / "
+        "complete_lesson(标记课程完成并记录画像变化)"
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "action": {
+                "type": "string",
+                "enum": ["create", "add_lesson", "complete_lesson"],
+                "description": "操作类型",
+            },
+            "title": {
+                "type": "string",
+                "description": "课程标题（add_lesson 时必填）",
+            },
+            "lesson_id": {
+                "type": "integer",
+                "description": "课程编号（complete_lesson 时必填）",
+            },
+            "profile_changes": {
+                "type": "string",
+                "description": "完成课程后观察到的学生画像变化（JSON 格式或自由文本描述）",
+            },
+        },
+        "required": ["action"],
+    },
+)
+def manage_plan(
+    action: str, title: str = "", lesson_id: int = 0, profile_changes: str = ""
+) -> str:
+    from openteacher.tutor.planner import (
+        create_plan, add_lesson, mark_lesson_complete, load_plan, plan_path,
+    )
+    # Get subject from the current session context — we use a simple approach
+    # The subject is inferred from the plan file name
+    subject = title if action == "create" and title else ""
+
+    if action == "create":
+        plan = create_plan(subject or "general")
+        return f"📋 学习计划已创建: {subject or 'general'}\n存储位置: {plan_path(subject or 'general')}"
+
+    elif action == "add_lesson":
+        if not title:
+            return "请提供课程标题。"
+        # Find the active plan by listing plan files
+        from openteacher.config import PLANS_DIR
+        import json
+        plan_files = list(PLANS_DIR.glob("*.json"))
+        if not plan_files:
+            return "未找到学习计划。请先用 action=create 创建。"
+        latest_plan = max(plan_files, key=lambda p: p.stat().st_mtime)
+        plan = json.loads(latest_plan.read_text(encoding="utf-8"))
+        subject = plan["subject"]
+        lesson = add_lesson(subject, title)
+        return f"📝 已添加第 {lesson['id']} 课: {title}\n计划: {subject}"
+
+    elif action == "complete_lesson":
+        if not lesson_id:
+            return "请提供课程编号。"
+        from openteacher.config import PLANS_DIR
+        import json
+        plan_files = list(PLANS_DIR.glob("*.json"))
+        if not plan_files:
+            return "未找到学习计划。"
+        latest_plan = max(plan_files, key=lambda p: p.stat().st_mtime)
+        plan = json.loads(latest_plan.read_text(encoding="utf-8"))
+        subject = plan["subject"]
+        changes = {}
+        if profile_changes:
+            changes["notes"] = profile_changes
+        result = mark_lesson_complete(subject, lesson_id, changes)
+        if result:
+            return f"✅ 第 {lesson_id} 课已完成: {result['title']}"
+        return f"未找到第 {lesson_id} 课。"
+
+    return "未知操作。"
+
+
+@register_tool(
+    name="plan_summary",
+    description="展示当前学习计划概览，包括所有课程及完成状态。",
+    parameters={"type": "object", "properties": {}, "required": []},
+)
+def plan_summary_tool() -> str:
+    from openteacher.config import PLANS_DIR
+    import json
+    files = list(PLANS_DIR.glob("*.json"))
+    if not files:
+        return "尚无学习计划。用 manage_plan(action='create') 创建。"
+    latest = max(files, key=lambda p: p.stat().st_mtime)
+    plan = json.loads(latest.read_text(encoding="utf-8"))
+    from openteacher.tutor.planner import plan_summary
+    return plan_summary(plan["subject"])

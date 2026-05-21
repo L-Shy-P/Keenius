@@ -13,12 +13,14 @@ CONFIG_DIR = Path.home() / ".openteacher"
 CONFIG_FILE = CONFIG_DIR / "config.yaml"
 DATA_DIR = CONFIG_DIR / "data"
 PROFILES_DIR = CONFIG_DIR / "profiles"
+PLANS_DIR = CONFIG_DIR / "plans"
 
 
 def ensure_dirs() -> None:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     PROFILES_DIR.mkdir(parents=True, exist_ok=True)
+    PLANS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def load_env() -> None:

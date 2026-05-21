@@ -38,6 +38,7 @@ SLASH_COMMANDS: dict[str, dict] = {
     "config": {
         "/setup":    ("配置 API Key 和模型", lambda _: run_setup_wizard()),
         "/config":   ("查看当前配置", lambda _: show_config()),
+        "/plan":     ("查看学习计划", lambda _: show_plan()),
         "/profile":  ("查看学生画像评估", lambda _: show_profile()),
         "/progress": ("查看学习进度", lambda _: show_progress()),
     },
@@ -268,6 +269,19 @@ def show_profile() -> str:
 
     lines.append(f"\n[dim]数据文件: {pf}[/dim]")
     return "\n".join(lines)
+
+
+def show_plan() -> str:
+    from openteacher.config import PLANS_DIR
+    import json
+    files = list(PLANS_DIR.glob("*.json"))
+    if not files:
+        return "暂无学习计划。开始学习后 Agent 会自动创建。"
+    # Show most recent plan
+    latest = max(files, key=lambda p: p.stat().st_mtime)
+    plan = json.loads(latest.read_text(encoding="utf-8"))
+    from openteacher.tutor.planner import plan_summary
+    return plan_summary(plan["subject"])
 
 
 def show_progress() -> str:
