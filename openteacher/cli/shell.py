@@ -32,6 +32,7 @@ SLASH_COMMANDS: dict[str, dict] = {
         "/save":    ("保存当前会话 /save [名称]", lambda ctx, a: _cmd_save(ctx, a), True),
         "/load":    ("加载历史会话 /load <名称>", lambda ctx, a: _cmd_load(ctx, a), True),
         "/sessions": ("列出所有已保存的会话", lambda ctx: _cmd_list_sessions()),
+        "/picker":   ("重新打开会话选择界面", lambda ctx: _cmd_reopen_picker(ctx)),
         "/subject": ("切换学习主题 /subject <主题>", lambda ctx, a: setattr(ctx["loop"], "subject", a) or f"主题已切换为: {a}", True),
         "/style":   ("切换教学风格 /style <socratic|direct|coaching>", lambda ctx, a: setattr(ctx["loop"], "teaching_style", a) or f"教学风格已切换为: {a}", True),
     },
@@ -321,6 +322,26 @@ def _cmd_load(ctx: dict, args: str) -> str:
     return f"未找到会话: {name}\n输入 /sessions 查看可用的会话列表。"
 
 
+def _cmd_reopen_picker(ctx: dict) -> str:
+    """Reopen the session picker from within the REPL. Returns EXIT to trigger restart."""
+    from openteacher.agent.sessions import scan_sessions, get_auto_load_session, load_session_by_name
+    sessions = scan_sessions()
+    if not sessions:
+        return "暂无已保存的会话。"
+    choice = session_picker(sessions)
+    if choice == "NEW":
+        ctx["loop"].reset()
+        return "已创建新会话。输入问题开始吧！"
+    elif choice is None:
+        return "已取消。"
+    else:
+        data = load_session_by_name(choice["name"], choice["source"])
+        if data:
+            ctx["loop"].__dict__.update(ConversationLoop.from_dict(data).__dict__)
+            return f"已加载会话: {choice['name']}"
+        return "加载失败。"
+
+
 def _cmd_list_sessions() -> str:
     sessions = ConversationLoop.list_sessions()
     if not sessions:
@@ -448,6 +469,86 @@ CHAT_STYLE = Style.from_dict({
     "toolbar": "bg:#1a1a2e #888888",
     "bottom-toolbar": "bg:#1a1a2e #aaaaaa",
 })
+
+
+# ── Session picker UI ─────────────────────────────────────────────────
+
+def session_picker(sessions: list[dict]) -> dict | str | None:
+    """Interactive session picker. Space=pin, Enter=select, N=new, Q=quit."""
+    from openteacher.agent.sessions import set_pinned_session, clear_pinned_session, get_pin_config
+    from rich.table import Table
+
+    pin_config = get_pin_config()
+    pinned_name = pin_config.get("auto_load", "")
+
+    while True:
+        console.clear()
+        console.print()
+        console.print("[bold]📂 会话列表[/bold]  [dim](当前目录)[/dim]")
+        console.print()
+
+        table = Table(show_header=True)
+        table.add_column("#", width=4)
+        table.add_column("", width=3)  # pin indicator
+        table.add_column("名称", style="cyan")
+        table.add_column("主题", style="green")
+        table.add_column("消息", width=6)
+        table.add_column("时间", style="dim")
+        table.add_column("来源", width=8)
+
+        for i, s in enumerate(sessions, 1):
+            pin = "📌" if s["name"] == pinned_name else ""
+            src = "项目" if s["source"] == "project" else "全局"
+            table.add_row(
+                str(i), pin, s["name"], s["subject"] or "(无)",
+                str(s["messages"]), s["saved_at"], src,
+            )
+
+        console.print(table)
+        console.print()
+        console.print("  [bold]N[/bold] 新建会话  |  [bold]数字[/bold] 选择  |  [bold]空格+数字[/bold] 设为默认  |  [bold]Q[/bold] 退出")
+        if pinned_name:
+            console.print(f"  [dim]📌 已固定: {pinned_name}（启动时自动加载）[/dim]")
+        console.print()
+
+        choice = input("❯ ").strip()
+
+        if choice.lower() == "q":
+            return None
+        if choice.lower() == "n":
+            return "NEW"
+
+        # Space + number = toggle pin
+        if choice.startswith(" "):
+            num_str = choice.strip()
+            if num_str.isdigit():
+                idx = int(num_str) - 1
+                if 0 <= idx < len(sessions):
+                    s = sessions[idx]
+                    if s["name"] == pinned_name:
+                        clear_pinned_session()
+                        pinned_name = ""
+                    else:
+                        set_pinned_session(s["name"], s["source"])
+                        pinned_name = s["name"]
+            continue
+
+        if choice.isdigit():
+            idx = int(choice) - 1
+            if 0 <= idx < len(sessions):
+                return sessions[idx]
+
+    return None
+
+
+def run_shell_with_session(data: dict) -> None:
+    """Start REPL with a pre-loaded session."""
+    from openteacher.agent.display import console, print_info
+    from openteacher.agent.sessions import load_session_by_name, set_pinned_session
+
+    loop = ConversationLoop.from_dict(data)
+    print_info(f"已加载会话: {data.get('session_name', '')}  |  {loop.turn_count} 轮对话")
+    _run_repl_loop(loop)
 
 
 # ── Main REPL ─────────────────────────────────────────────────────────

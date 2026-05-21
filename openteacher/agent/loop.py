@@ -206,11 +206,15 @@ class ConversationLoop:
         return loop
 
     def save(self, name: str | None = None) -> str:
-        """Save session to disk. Returns the session name."""
-        _ensure_sessions_dir()
+        """Save session to project-level directory (preferred) or global."""
         save_name = name or self._session_name or _auto_session_name(self)
         self._session_name = save_name
-        filepath = SESSIONS_DIR / f"{save_name}.json"
+
+        # Prefer project-level directory, fall back to global
+        from openteacher.agent.sessions import project_sessions_dir, global_sessions_dir
+        target_dir = project_sessions_dir()
+        target_dir.mkdir(parents=True, exist_ok=True)
+        filepath = target_dir / f"{save_name}.json"
         filepath.write_text(
             json.dumps(self.to_dict(), ensure_ascii=False, indent=2),
             encoding="utf-8",
@@ -218,35 +222,23 @@ class ConversationLoop:
         return save_name
 
     def load(self, name: str) -> bool:
-        """Load session from disk. Returns True on success."""
-        filepath = SESSIONS_DIR / f"{name}.json"
-        if not filepath.exists():
-            return False
-        data = json.loads(filepath.read_text(encoding="utf-8"))
-        loaded = self.from_dict(data)
-        self.__dict__.update(loaded.__dict__)
-        self._session_name = name
-        return True
+        """Load session from project or global directory. Returns True on success."""
+        from openteacher.agent.sessions import project_sessions_dir, global_sessions_dir
+        for base_dir in (project_sessions_dir(), global_sessions_dir()):
+            filepath = base_dir / f"{name}.json"
+            if filepath.exists():
+                data = json.loads(filepath.read_text(encoding="utf-8"))
+                loaded = self.from_dict(data)
+                self.__dict__.update(loaded.__dict__)
+                self._session_name = name
+                return True
+        return False
 
     @staticmethod
     def list_sessions() -> list[dict]:
-        """List all saved sessions with metadata."""
-        _ensure_sessions_dir()
-        sessions = []
-        for f in sorted(SESSIONS_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
-            try:
-                data = json.loads(f.read_text(encoding="utf-8"))
-                sessions.append({
-                    "name": f.stem,
-                    "subject": data.get("subject", ""),
-                    "model": data.get("model", ""),
-                    "messages": len(data.get("messages", [])),
-                    "created_at": data.get("created_at", "")[:16],
-                    "saved_at": data.get("saved_at", "")[:16],
-                })
-            except json.JSONDecodeError:
-                continue
-        return sessions
+        """List all saved sessions (uses scan_sessions from sessions module)."""
+        from openteacher.agent.sessions import scan_sessions
+        return scan_sessions()
 
     @property
     def history_length(self) -> int:
