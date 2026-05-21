@@ -483,71 +483,81 @@ CHAT_STYLE = Style.from_dict({
 # ── Session picker UI ─────────────────────────────────────────────────
 
 def session_picker(sessions: list[dict]) -> dict | str | None:
-    """Interactive session picker. Space=pin, Enter=select, N=new, Q=quit."""
+    """Interactive session picker with keyboard navigation.
+    Up/Down to select, Enter to open, Space to pin, N for new, Q/Esc to quit."""
     from openteacher.agent.sessions import set_pinned_session, clear_pinned_session, get_pin_config
-    from rich.table import Table
+    from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit import PromptSession as PS
 
     pin_config = get_pin_config()
-    pinned_name = pin_config.get("auto_load", "")
+    pinned_name = [pin_config.get("auto_load", "")]  # mutable
 
-    while True:
-        console.clear()
-        console.print()
-        console.print("[bold]📂 会话列表[/bold]  [dim](当前目录)[/dim]")
-        console.print()
+    idx = [0]
+    sessions_list = sessions  # capture
 
-        table = Table(show_header=True)
-        table.add_column("#", width=4)
-        table.add_column("", width=3)  # pin indicator
-        table.add_column("名称", style="cyan")
-        table.add_column("主题", style="green")
-        table.add_column("消息", width=6)
-        table.add_column("时间", style="dim")
-        table.add_column("来源", width=8)
-
-        for i, s in enumerate(sessions, 1):
-            pin = "📌" if s["name"] == pinned_name else ""
+    def _picker_toolbar():
+        lines = []
+        for i, s in enumerate(sessions_list):
+            marker = "▶" if i == idx[0] else " "
+            pin_mark = "📌" if s["name"] == pinned_name[0] else ""
             src = "项目" if s["source"] == "project" else "全局"
-            table.add_row(
-                str(i), pin, s["name"], s["subject"] or "(无)",
-                str(s["messages"]), s["saved_at"], src,
+            subj = s["subject"] or "(无)"
+            lines.append(
+                f"{marker} {pin_mark} [cyan]{s['name']:20s}[/cyan] "
+                f"📚 {subj:16s} 💬 {s['messages']:3d}条  {s['saved_at']}  {src}"
             )
+        lines.append(
+            f"{'▶' if idx[0] == len(sessions_list) else ' '} [bold]＋新建会话[/bold]"
+        )
+        lines.append("")
+        lines.append("↑↓ 选择  Enter 打开  Space 固定/取消  N 新建  Q 退出")
+        if pinned_name[0]:
+            lines.append(f"📌 已固定: {pinned_name[0]}（启动时自动加载）")
+        return "  ".join(lines)
 
-        console.print(table)
-        console.print()
-        console.print("  [bold]N[/bold] 新建会话  |  [bold]数字[/bold] 选择  |  [bold]空格+数字[/bold] 设为默认  |  [bold]Q[/bold] 退出")
-        if pinned_name:
-            console.print(f"  [dim]📌 已固定: {pinned_name}（启动时自动加载）[/dim]")
-        console.print()
+    kb = KeyBindings()
 
-        choice = input("❯ ").strip()
+    @kb.add("up")
+    def _(event): idx[0] = (idx[0] - 1) % (len(sessions_list) + 1)
 
-        if choice.lower() == "q":
-            return None
-        if choice.lower() == "n":
-            return "NEW"
+    @kb.add("down")
+    def _(event): idx[0] = (idx[0] + 1) % (len(sessions_list) + 1)
 
-        # Space + number = toggle pin
-        if choice.startswith(" "):
-            num_str = choice.strip()
-            if num_str.isdigit():
-                idx = int(num_str) - 1
-                if 0 <= idx < len(sessions):
-                    s = sessions[idx]
-                    if s["name"] == pinned_name:
-                        clear_pinned_session()
-                        pinned_name = ""
-                    else:
-                        set_pinned_session(s["name"], s["source"])
-                        pinned_name = s["name"]
-            continue
+    @kb.add("enter")
+    def _(event):
+        if idx[0] < len(sessions_list):
+            event.app.exit(result=sessions_list[idx[0]])
+        else:
+            event.app.exit(result="NEW")
 
-        if choice.isdigit():
-            idx = int(choice) - 1
-            if 0 <= idx < len(sessions):
-                return sessions[idx]
+    @kb.add("space")
+    def _(event):
+        if idx[0] < len(sessions_list):
+            s = sessions_list[idx[0]]
+            if s["name"] == pinned_name[0]:
+                clear_pinned_session()
+                pinned_name[0] = ""
+            else:
+                set_pinned_session(s["name"], s["source"])
+                pinned_name[0] = s["name"]
 
-    return None
+    @kb.add("n")
+    def _(event): event.app.exit(result="NEW")
+
+    @kb.add("q")
+    def _(event): event.app.exit(result=None)
+
+    @kb.add("escape")
+    def _(event): event.app.exit(result=None)
+
+    @kb.add("c-c")
+    def _(event): event.app.exit(result=None)
+
+    ps = PS(key_bindings=kb, bottom_toolbar=_picker_toolbar, style=CHAT_STYLE)
+    try:
+        return ps.prompt("")
+    except (EOFError, KeyboardInterrupt):
+        return None
 
 
 def run_shell_with_session(data: dict) -> None:
@@ -652,8 +662,8 @@ def _run_repl_loop(loop: ConversationLoop) -> None:
                 print_error(f"请求失败: {msg}")
             continue
 
-        # Streaming already displayed the response live — just add spacing
-        _maybe_track_progress_from_response(response)
+        # Auto-save after meaningful conversation
+        _auto_save_silent(loop)
 
         # Interactive choice picking
         options = _extract_options(response)
@@ -662,6 +672,7 @@ def _run_repl_loop(loop: ConversationLoop) -> None:
             if selected:
                 loop.messages.append({"role": "user", "content": selected})
                 response = loop.send_message(selected)
+                _auto_save_silent(loop)
                 print_assistant_header()
                 continue
 
@@ -729,6 +740,15 @@ def _pick_choice_interactive(options: list, session, loop):
         return ps.prompt("")
     except (EOFError, KeyboardInterrupt):
         return None
+
+
+def _auto_save_silent(loop: ConversationLoop) -> None:
+    """Silent auto-save after each meaningful exchange."""
+    if loop.turn_count > 0:
+        try:
+            loop.save()
+        except Exception:
+            pass
 
 
 def _auto_save_on_exit(loop: ConversationLoop) -> None:
