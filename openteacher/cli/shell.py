@@ -34,6 +34,7 @@ SLASH_COMMANDS: dict[str, dict] = {
         "/sessions": ("列出所有已保存的会话", lambda ctx: _cmd_list_sessions()),
         "/picker":   ("重新打开会话选择界面", lambda ctx: _cmd_reopen_picker(ctx)),
         "/subject": ("切换学习主题 /subject <主题>", lambda ctx, a: setattr(ctx["loop"], "subject", a) or f"主题已切换为: {a}", True),
+        "/mode":    ("切换教学模式 /mode <guided|direct|mixed>", lambda ctx, a: _cmd_mode(ctx, a), True),
         "/style":   ("切换教学风格 /style <socratic|direct|coaching>", lambda ctx, a: setattr(ctx["loop"], "teaching_style", a) or f"教学风格已切换为: {a}", True),
     },
     "config": {
@@ -320,6 +321,15 @@ def _cmd_load(ctx: dict, args: str) -> str:
         loop.subject = loop.subject or ""
         return f"✓ 已加载会话 [cyan]{name}[/cyan]\n  {loop.turn_count} 轮对话, {len(loop.messages)} 条消息\n\n输入内容继续对话。"
     return f"未找到会话: {name}\n输入 /sessions 查看可用的会话列表。"
+
+
+def _cmd_mode(ctx: dict, args: str) -> str:
+    mode = args.strip()
+    if mode not in ("guided", "direct", "mixed"):
+        return "模式需为 guided（引导式）/ direct（讲解式）/ mixed（混合式）"
+    ctx["loop"].mode = mode
+    names = {"guided": "引导式 — 提问让你推导", "direct": "讲解式 — 直接告诉你", "mixed": "混合式 — 先讲再确认"}
+    return f"教学模式: {names[mode]}"
 
 
 def _cmd_reopen_picker(ctx: dict) -> str:
@@ -718,6 +728,9 @@ def _toolbar_text(loop: ConversationLoop) -> str:
 
     if loop.subject:
         parts.append(f"| 📚 {loop.subject}")
+    modes = {"guided": "引导", "direct": "讲解", "mixed": "混合"}
+    mode_str = modes.get(loop.mode, loop.mode)
+    parts.append(f"| 🎯 {mode_str}")
     parts.append(f"| 🤖 {loop.model}")
 
     # If last assistant message has options, hint the user

@@ -39,6 +39,7 @@ class ConversationLoop:
         self.turn_count = 0
         self.running = False
         self.phase = "diagnosis"  # diagnosis → learning → end
+        self.mode = "mixed"  # guided / direct / mixed
         self._created_at = datetime.now().isoformat()
         self._session_name: str | None = None
 
@@ -184,6 +185,7 @@ class ConversationLoop:
             "temperature": self.temperature,
             "turn_count": self.turn_count,
             "phase": self.phase,
+            "mode": self.mode,
             "created_at": self._created_at,
             "saved_at": datetime.now().isoformat(),
             "messages": self.messages,
@@ -200,6 +202,7 @@ class ConversationLoop:
         loop.temperature = data.get("temperature", 0.7)
         loop.turn_count = data.get("turn_count", 0)
         loop.phase = data.get("phase", "diagnosis")
+        loop.mode = data.get("mode", "mixed")
         loop._created_at = data.get("created_at", datetime.now().isoformat())
         loop.messages = data.get("messages", [])
         loop.running = True
