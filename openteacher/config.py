@@ -12,15 +12,17 @@ import yaml
 CONFIG_DIR = Path.home() / ".openteacher"
 CONFIG_FILE = CONFIG_DIR / "config.yaml"
 DATA_DIR = CONFIG_DIR / "data"
+PROFILES_DIR = CONFIG_DIR / "profiles"
 
 
 def ensure_dirs() -> None:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
+    PROFILES_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def load_env() -> None:
-    """Load .env from project root and ~/.openteacherer/.env."""
+    """Load .env from project root and ~/.openteacher/.env."""
     project_env = Path.cwd() / ".env"
     if project_env.exists():
         load_dotenv(project_env)
@@ -78,7 +80,7 @@ def get_config_value(key: str, default=None):
 
 
 def set_env(key: str, value: str) -> None:
-    """Write a key=value pair to ~/.openteacherer/.env, creating the file if needed."""
+    """Write a key=value pair to ~/.openteacher/.env, creating the file if needed."""
     ensure_dirs()
     env_file = CONFIG_DIR / ".env"
 

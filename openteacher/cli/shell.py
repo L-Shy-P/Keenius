@@ -38,6 +38,7 @@ SLASH_COMMANDS: dict[str, dict] = {
     "config": {
         "/setup":    ("配置 API Key 和模型", lambda _: run_setup_wizard()),
         "/config":   ("查看当前配置", lambda _: show_config()),
+        "/profile":  ("查看学生画像评估", lambda _: show_profile()),
         "/progress": ("查看学习进度", lambda _: show_progress()),
     },
     "help": {
@@ -204,6 +205,53 @@ def show_config() -> str:
     )
 
 
+def show_profile() -> str:
+    import json
+    from openteacher.config import PROFILES_DIR
+
+    pf = PROFILES_DIR / "default.json"
+    if not pf.exists():
+        return "暂无学生画像数据。使用过程中 Agent 会自动构建。"
+    data = json.loads(pf.read_text(encoding="utf-8"))
+
+    lines = ["\n🎯 [bold]学生画像[/bold]\n"]
+
+    orient = data.get("learning_orientation", "")
+    if orient:
+        labels = {
+            "theory_focused": "理论导向", "practice_focused": "实践导向",
+            "exam_focused": "应试导向", "curiosity_driven": "兴趣驱动",
+            "project_driven": "项目驱动",
+        }
+        lines.append(f"  学习倾向: {labels.get(orient, orient)}")
+
+    summary = data.get("overall_summary", "")
+    if summary:
+        lines.append(f"  总体评估: {summary}")
+
+    # Concept levels
+    concept_levels = data.get("concept_levels", {})
+    if concept_levels:
+        lines.append("\n  [bold]📚 概念掌握度 (C 轴)[/bold]")
+        for name, info in sorted(concept_levels.items()):
+            ev = f" — {info.get('evidence', '')}" if info.get("evidence") else ""
+            lines.append(f"    {info['level']}  {name}{ev}")
+
+    # Skill levels
+    skill_levels = data.get("skill_levels", {})
+    if skill_levels:
+        lines.append("\n  [bold]🛠️ 应用/执行能力 (S 轴)[/bold]")
+        for name, info in sorted(skill_levels.items()):
+            ev = f" — {info.get('evidence', '')}" if info.get("evidence") else ""
+            lines.append(f"    {info['level']}  {name}{ev}")
+
+    if not concept_levels and not skill_levels:
+        lines.append("  [dim]尚未评估具体知识维度[/dim]")
+
+    lines.append(f"\n[dim]数据文件: {pf}[/dim]")
+    return "\n".join(lines)
+
+
 def show_progress() -> str:
     import json
     progress_file = DATA_DIR / "progress.json"
@@ -315,18 +363,45 @@ def save_progress(concept: str, status: str, notes: str = "") -> None:
 
 
 def save_assessment(dimension: str, value: str, concept: str = "", evidence: str = "") -> None:
-    import json
-    assess_file = DATA_DIR / "student_profile.json"
-    data = json.loads(assess_file.read_text(encoding="utf-8")) if assess_file.exists() else []
-    entry = {"dimension": dimension, "value": value, "concept": concept, "evidence": evidence}
-    # Replace existing assessment for same dimension+concept
-    for item in data:
-        if item.get("dimension") == dimension and item.get("concept") == concept:
-            item.update(entry)
-            break
+    """Persist student assessment to ~/.openteacher/profiles/default.json."""
+    import json, datetime
+    from openteacher.config import PROFILES_DIR, ensure_dirs
+
+    ensure_dirs()
+    profile_file = PROFILES_DIR / "default.json"
+
+    if profile_file.exists():
+        profile = json.loads(profile_file.read_text(encoding="utf-8"))
     else:
-        data.append(entry)
-    assess_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        profile = {
+            "created_at": datetime.datetime.now().isoformat(),
+            "learning_orientation": "",
+            "concept_levels": {},   # { "concept_name": {"level": "C2", "evidence": "...", "updated_at": "..."} }
+            "skill_levels": {},     # { "concept_name": {"level": "S3", "evidence": "...", "updated_at": "..."} }
+            "history": [],
+        }
+
+    now = datetime.datetime.now().isoformat()
+
+    if dimension == "learning_orientation":
+        profile["learning_orientation"] = value
+    elif dimension == "overall_summary":
+        profile["overall_summary"] = value
+    elif dimension == "concept_level":
+        profile["concept_levels"][concept] = {"level": value, "evidence": evidence, "updated_at": now}
+    elif dimension == "skill_level":
+        profile["skill_levels"][concept] = {"level": value, "evidence": evidence, "updated_at": now}
+    elif dimension == "understanding_depth":
+        profile.setdefault("understanding_depth", {})[concept or "overall"] = {"level": value, "evidence": evidence, "updated_at": now}
+    elif dimension == "application_ability":
+        profile.setdefault("application_ability", {})[concept or "overall"] = {"level": value, "evidence": evidence, "updated_at": now}
+
+    profile["history"].append({
+        "dimension": dimension, "value": value, "concept": concept,
+        "evidence": evidence, "recorded_at": now,
+    })
+
+    profile_file.write_text(json.dumps(profile, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 # ── Prompt styling ────────────────────────────────────────────────────
