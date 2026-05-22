@@ -88,27 +88,63 @@ class SlashCompleter(Completer):
                     yield Completion(s, start_position=-len(arg_part))
 
 
-# ── Key bindings ──────────────────────────────────────────────────────
+# ── Key bindings for REPL ─────────────────────────────────────────────
 
-bindings = KeyBindings()
+repl_bindings = KeyBindings()
 
 
-@bindings.add("c-d")
+@repl_bindings.add("c-d")
 def _(event):
-    """Ctrl+D to exit."""
     event.app.exit(result="EXIT")
 
 
-@bindings.add("escape", "enter")
+@repl_bindings.add("c-c")
 def _(event):
-    """Alt+Enter for newline."""
+    event.app.exit(result="INTERRUPT")
+
+
+@repl_bindings.add("escape", "enter")
+def _(event):
+    """Alt+Enter / Ctrl+Enter for newline."""
     event.app.current_buffer.insert_text("\n")
 
 
-@bindings.add("c-c")
-def _(event):
-    """Ctrl+C to interrupt."""
-    event.app.exit(result="INTERRUPT")
+# ── Standard picker key bindings (Tab=cycle, Up/Down=select, Enter=confirm) ─
+
+def _picker_kb(idx_ref: list, count: int, on_select, on_cancel=None):
+    """Build standard key bindings for a list picker.
+    idx_ref: mutable list [current_index]
+    count: total items
+    on_select: callable, receives index
+    on_cancel: callable or None
+    """
+    kb = KeyBindings()
+
+    @kb.add("up")
+    def _(event): idx_ref[0] = (idx_ref[0] - 1) % count
+
+    @kb.add("down")
+    def _(event): idx_ref[0] = (idx_ref[0] + 1) % count
+
+    @kb.add("tab")
+    def _(event): idx_ref[0] = (idx_ref[0] + 1) % count
+
+    @kb.add("s-tab")
+    def _(event): idx_ref[0] = (idx_ref[0] - 1) % count
+
+    @kb.add("enter")
+    def _(event): on_select(idx_ref[0])
+
+    @kb.add("escape")
+    def _(event):
+        if on_cancel:
+            on_cancel()
+        event.app.exit(result=None)
+
+    @kb.add("c-c")
+    def _(event): event.app.exit(result=None)
+
+    return kb
 
 
 # ── Error handling ────────────────────────────────────────────────────
@@ -197,36 +233,45 @@ def run_setup_wizard() -> str:
 
 
 def _pick_provider_interactive(options: list) -> int | None:
-    """Keyboard-driven provider selection. Returns index or None."""
-    from prompt_toolkit.key_binding import KeyBindings
-    from prompt_toolkit import PromptSession as PS
-
+    """Keyboard-driven provider selection."""
+    kb = _picker_kb(
+        idx_ref := [0], len(options),
+        on_select=lambda i: None,  # handled below
+    )
+    # Override enter to return index
     kb = KeyBindings()
     idx = [0]
+
+    @kb.add("up")
+    def _(event): idx[0] = (idx[0] - 1) % len(options)
+    @kb.add("down")
+    def _(event): idx[0] = (idx[0] + 1) % len(options)
+
+    @kb.add("tab")
+    def _(event): idx[0] = (idx[0] + 1) % len(options)
+
+    @kb.add("s-tab")
+    def _(event): idx[0] = (idx[0] - 1) % len(options)
+    @kb.add("tab")
+    def _(event): idx[0] = (idx[0] + 1) % len(options)
+    @kb.add("s-tab")
+    def _(event): idx[0] = (idx[0] - 1) % len(options)
+    @kb.add("enter")
+    def _(event): event.app.exit(result=idx[0])
+    @kb.add("escape")
+    def _(event): event.app.exit(result=None)
+    @kb.add("c-c")
+    def _(event): event.app.exit(result=None)
 
     def _toolbar():
         lines = []
         for i, opt in enumerate(options):
             marker = "▶" if i == idx[0] else " "
             lines.append(f"{marker} [{opt['num']}] {opt['text']}")
-        lines.append("↑↓ 选择  Enter 确认  Esc 取消")
+        lines.append("↑↓/Tab 选择  Enter 确认  Esc 取消")
         return "  ".join(lines)
 
-    @kb.add("up")
-    def _(event): idx[0] = (idx[0] - 1) % len(options)
-
-    @kb.add("down")
-    def _(event): idx[0] = (idx[0] + 1) % len(options)
-
-    @kb.add("enter")
-    def _(event): event.app.exit(result=idx[0])
-
-    @kb.add("escape")
-    def _(event): event.app.exit(result=None)
-
-    @kb.add("c-c")
-    def _(event): event.app.exit(result=None)
-
+    from prompt_toolkit import PromptSession as PS
     ps = PS(key_bindings=kb, bottom_toolbar=_toolbar, style=CHAT_STYLE)
     try:
         return ps.prompt("")
@@ -467,6 +512,12 @@ def _pick_from_list(options: list, title: str = "") -> int | None:
 
     @kb.add("down")
     def _(event): idx[0] = (idx[0] + 1) % len(options)
+
+    @kb.add("tab")
+    def _(event): idx[0] = (idx[0] + 1) % len(options)
+
+    @kb.add("s-tab")
+    def _(event): idx[0] = (idx[0] - 1) % len(options)
 
     @kb.add("enter")
     def _(event): event.app.exit(result=idx[0])
@@ -727,7 +778,7 @@ def _run_repl_loop(loop: ConversationLoop) -> None:
         auto_suggest=AutoSuggestFromHistory(),
         completer=SlashCompleter(),
         complete_while_typing=True,
-        key_bindings=bindings,
+        key_bindings=repl_bindings,
         style=CHAT_STYLE,
         bottom_toolbar=lambda: _toolbar_text(loop),
     )
@@ -829,6 +880,12 @@ def _pick_choice_interactive(options: list, session, loop):
     @kb.add("down")
     def _(event): idx[0] = (idx[0] + 1) % len(options)
 
+    @kb.add("tab")
+    def _(event): idx[0] = (idx[0] + 1) % len(options)
+
+    @kb.add("s-tab")
+    def _(event): idx[0] = (idx[0] - 1) % len(options)
+
     @kb.add("enter")
     def _(event):
         result = options[idx[0]]["text"]
@@ -885,7 +942,7 @@ def _run_offline_repl(loop: ConversationLoop) -> None:
         history=FileHistory(str(history_file)),
         completer=SlashCompleter(),
         complete_while_typing=True,
-        key_bindings=bindings,
+        key_bindings=repl_bindings,
         style=CHAT_STYLE,
         bottom_toolbar=lambda: "⚙️  离线模式 — 请输入 /setup 配置 API 或 /help 查看帮助",
     )
