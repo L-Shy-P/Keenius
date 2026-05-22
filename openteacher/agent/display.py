@@ -1,43 +1,26 @@
 """Display helpers using Rich for beautiful terminal output."""
 
 from __future__ import annotations
-import time
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.table import Table
 from rich.rule import Rule
-from rich.text import Text
-
 console = Console()
 
 # ── Logo ────────────────────────────────────────────────────────────
 
-LOGO = """\
-[bold cyan]   ____              _____[/bold cyan][bold green]__[/bold green][bold cyan]              __[/bold cyan]
-[bold cyan]  / __ \\[/bold cyan][bold green]___  ___  [/bold cyan][bold green]/_  __/ /_  ___  ____ _/ /_  ___  _____[/bold cyan]
-[bold cyan] / / / / _ \\/ _ \\  / / / __ \\/ _ \\/ __ `/ __ \\/ _ \\/ ___/[/bold cyan]
-[bold cyan]/ /_/ /  __/  __/ / / / / / /  __/ /_/ / /_/ /  __/ /[/bold cyan]
-[bold cyan]\\____/\\___/\\___/ /_/ /_/ /_/\\___/\\__,_/_.___/\\___/_/[/bold cyan]
-"""
-
-LOGO_SMALL = """\
-[bold cyan]OpenTeacher[/bold cyan] [dim]— CLI AI 智能老师[/dim]
-"""
-
-
 def print_logo() -> None:
-    """Print the ASCII art logo with a brief animation."""
-    import sys
+    """Print branded title banner."""
+    import openteacher
     console.print()
-    try:
-        w = console.width
-    except Exception:
-        w = 80
-    if w >= 60:
-        console.print(LOGO)
-    else:
-        console.print(LOGO_SMALL)
+    console.print(
+        Panel.fit(
+            "[bold cyan]OpenTeacher[/bold cyan] [dim]v" + openteacher.__version__ + "[/dim]\n"
+            "[dim]CLI AI 智能老师[/dim]",
+            border_style="cyan",
+        )
+    )
     console.print()
 
 
@@ -46,7 +29,7 @@ def print_welcome() -> None:
     console.print(
         Panel.fit(
             "[dim]输入问题开始对话  |  /help 查看命令  |  /setup 配置 API[/dim]\n"
-            "[dim]Tab 补全  |  Alt+Enter 换行  |  Ctrl+D 退出  |  ↑↓ 选择历史[/dim]",
+            "[dim]Tab 补全  |  Ctrl+Enter 换行  |  Ctrl+D 退出  |  ↑↓ 选择历史[/dim]",
             border_style="cyan",
             title="🎓 欢迎使用 OpenTeacher",
         )

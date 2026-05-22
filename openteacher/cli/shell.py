@@ -552,7 +552,7 @@ def show_help() -> str:
         for cmd, (desc, *_rest) in cmds.items():
             lines.append(f"    [cyan]{cmd:12s}[/cyan] {desc}")
     lines.append("")
-    lines.append("[dim]Tip: Tab 键自动补全  |  Alt+Enter 换行  |  Ctrl+D 退出[/dim]")
+    lines.append("[dim]Tip: Tab 键自动补全  |  Ctrl+Enter 换行  |  Ctrl+D 退出[/dim]")
     return "\n".join(lines)
 
 
