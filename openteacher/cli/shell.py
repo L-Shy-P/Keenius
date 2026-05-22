@@ -734,12 +734,22 @@ def session_picker(sessions: list[dict]) -> dict | str | None:
 
 
 def run_shell_with_session(data: dict) -> None:
-    """Start REPL with a pre-loaded session."""
-    from openteacher.agent.display import console, print_info
-    from openteacher.agent.sessions import load_session_by_name, set_pinned_session
+    """Start REPL with a pre-loaded session. Show conversation summary."""
+    from openteacher.agent.display import console, print_info, print_markdown
 
     loop = ConversationLoop.from_dict(data)
-    print_info(f"已加载会话: {data.get('session_name', '')}  |  {loop.turn_count} 轮对话")
+    print_info(f"已加载会话  |  {loop.turn_count} 轮对话  |  {len(loop.messages)} 条消息")
+
+    # Show last few exchanges
+    msgs = [m for m in loop.messages if m.get("role") in ("user", "assistant") and m.get("content")]
+    if msgs:
+        console.print()
+        recent = msgs[-4:]  # last 2 exchanges
+        for m in recent:
+            role = "🧑" if m["role"] == "user" else "🤖"
+            text = m["content"][:100].replace("\n", " ")
+            console.print(f"  [dim]{role} {text}...[/dim]" if len(m["content"]) > 100 else f"  [dim]{role} {text}[/dim]")
+        console.print()
     _run_repl_loop(loop)
 
 
@@ -896,78 +906,22 @@ def _extract_options(text: str) -> list | None:
 
 
 def _pick_choice_interactive(options: list, session, loop):
-    """Arrow keys to navigate, Enter to select, Space for notes, Esc skip."""
-    from prompt_toolkit.key_binding import KeyBindings
-    from prompt_toolkit import PromptSession as PS
-
-    # Display options as Rich panel above the prompt
-    from rich.panel import Panel
+    """Simple choice picker: type number to select."""
     lines = []
     for i, opt in enumerate(options):
-        prefix = "▶ " if i == 0 else "  "
-        lines.append(f"{prefix}[{opt['num']}] {opt['text'][:120]}")
-    panel = Panel("\n".join(lines), border_style="cyan", title="请选择", title_align="left")
+        lines.append(f"  [{opt['num']}] {opt['text'][:120]}")
+    console.print("\n".join(lines))
     console.print()
-    console.print(panel)
+    console.print("[dim]输入数字选择，直接输入文字则作为自由回复[/dim]")
 
-    kb = KeyBindings()
-    idx = [0]
-
-    @kb.add("up")
-    def _(event): idx[0] = (idx[0] - 1) % len(options)
-
-    @kb.add("down")
-    def _(event): idx[0] = (idx[0] + 1) % len(options)
-
-    @kb.add("tab")
-    def _(event): idx[0] = (idx[0] + 1) % len(options)
-
-    @kb.add("s-tab")
-    def _(event): idx[0] = (idx[0] - 1) % len(options)
-
-    @kb.add("enter")
-    def _(event):
-        event.app.exit(result=options[idx[0]]["text"])
-
-    @kb.add("space")
-    def _(event):
-        # Space enters note mode — allow typing
-        event.app.exit(result="__NOTE_MODE__")
-
-    @kb.add("escape")
-    def _(event): event.app.exit(result=None)
-
-    @kb.add("c-c")
-    def _(event): event.app.exit(result=None)
-
-    def _toolbar():
-        return f"↑↓/Tab 选择  Enter 确认  Space 备注  Esc 跳过  [{idx[0]+1}/{len(options)}]"
-
-    while True:
-        ps = PS(key_bindings=kb, bottom_toolbar=_toolbar, style=CHAT_STYLE)
-        try:
-            result = ps.prompt("")
-        except (EOFError, KeyboardInterrupt):
-            return None
-
-        if result == "__NOTE_MODE__":
-            # Enter note mode: take free text
-            from prompt_toolkit import PromptSession as PS2
-            nk = KeyBindings()
-            @nk.add("enter")
-            def _(event): event.app.exit(result="done")
-            @nk.add("escape")
-            def _(event): event.app.exit(result=None)
-            nps = PS2(key_bindings=nk, bottom_toolbar=lambda: "输入备注，Enter 确认，Esc 取消")
-            try:
-                note = nps.prompt("备注: ")
-            except (EOFError, KeyboardInterrupt):
-                note = None
-            if note:
-                result = options[idx[0]]["text"] + f"。补充: {note}"
-                return result
-            continue  # go back to picker
-        return result
+    choice = input("> ").strip()
+    if choice.isdigit():
+        idx = int(choice) - 1
+        if 0 <= idx < len(options):
+            return options[idx]["text"]
+    if choice:
+        return choice
+    return None
 
 
 def _review_curriculum(lessons: list) -> list[int]:
