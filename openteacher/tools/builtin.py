@@ -605,8 +605,8 @@ def write_lesson_content(
 @register_tool(
     name="generate_curriculum",
     description=(
-        "生成课程大纲，写入学习计划文件。每节课包含 title 和 description。"
-        "调用后会覆盖已有课程列表。"
+        "生成课程大纲写入计划文件。每课一个具体知识点，一门学科20-50课。"
+        "title=课程名(如 '函数参数类型')，description=一句话描述。调用后覆盖已有。"
     ),
     parameters={
         "type": "object",

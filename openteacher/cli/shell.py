@@ -977,8 +977,8 @@ def _review_curriculum(lessons: list) -> list[int]:
                 lines.append(f"     [dim]{lesson['description']}[/dim]")
         lines.append("")
         lines.append(
-            f"Space 勾选/取消  A 全选  I 反选  ↑↓/Tab 移动  Enter 确认  "
-            f"已勾 {len(skipped)}/{count}"
+            f"第 {idx[0]+1}/{count} 课  Space 勾选/取消  A 全选  I 反选  "
+            f"↑↓/Tab 移动  Enter 确认  已勾 {len(skipped)}"
         )
         return "  ".join(lines)
 
