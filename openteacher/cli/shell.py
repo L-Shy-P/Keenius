@@ -649,88 +649,63 @@ def save_assessment(dimension: str, value: str, concept: str = "", evidence: str
 
 CHAT_STYLE = Style.from_dict({
     "prompt": "bold cyan",
-    "bottom-toolbar": "dim italic",
 })
 
 
 # ── Session picker UI ─────────────────────────────────────────────────
 
 def session_picker(sessions: list[dict]) -> dict | str | None:
-    """Interactive session picker with keyboard navigation.
-    Up/Down to select, Enter to open, Space to pin, N for new, Q/Esc to quit."""
+    """Keyboard session picker: Rich display + msvcrt keys. No prompt_toolkit."""
+    import sys, msvcrt
     from openteacher.agent.sessions import set_pinned_session, clear_pinned_session, get_pin_config
-    from prompt_toolkit.key_binding import KeyBindings
-    from prompt_toolkit import PromptSession as PS
 
     pin_config = get_pin_config()
-    pinned_name = [pin_config.get("auto_load", "")]  # mutable
+    pinned_name = pin_config.get("auto_load", "")
+    count = len(sessions) + 1
+    idx = 0
+    lines_total = count + 4  # sessions + new + blank + help + pin-status
 
-    idx = [0]
-    sessions_list = sessions  # capture
-
-    def _picker_toolbar():
-        lines = []
-        for i, s in enumerate(sessions_list):
-            marker = "▶" if i == idx[0] else " "
-            pin_mark = "📌" if s["name"] == pinned_name[0] else ""
-            src = "项目" if s["source"] == "project" else "全局"
+    def _redraw():
+        sys.stdout.write(f"\033[{lines_total}A\033[J")
+        for i, s in enumerate(sessions):
+            marker = "\033[1;36m▶\033[0m" if i == idx else " "
+            pin = "📌" if s["name"] == pinned_name else " "
             subj = s["subject"] or "(无)"
-            lines.append(
-                f"{marker} {pin_mark} {s['name']:20s}  "
-                f"📚 {subj:16s} 💬 {s['messages']:3d}条  {s['saved_at']}  {src}"
-            )
-        lines.append(
-            f"{'▶' if idx[0] == len(sessions_list) else ' '} ＋新建会话"
-        )
-        lines.append("")
-        lines.append("↑↓ 选择  Enter 打开  Space 固定/取消  N 新建  Q 退出")
-        if pinned_name[0]:
-            lines.append(f"📌 已固定: {pinned_name[0]}（启动时自动加载）")
-        return "  ".join(lines)
-
-    kb = KeyBindings()
-
-    @kb.add("up")
-    def _(event): idx[0] = (idx[0] - 1) % (len(sessions_list) + 1)
-
-    @kb.add("down")
-    def _(event): idx[0] = (idx[0] + 1) % (len(sessions_list) + 1)
-
-    @kb.add("enter")
-    def _(event):
-        if idx[0] < len(sessions_list):
-            event.app.exit(result=sessions_list[idx[0]])
+            src = "项目" if s["source"] == "project" else "全局"
+            sys.stdout.write(f"\033[K{marker} {pin} {s['name']:<24s} 📚 {subj:<16s} 💬 {s['messages']:>3d}条  {s['saved_at']}  {src}\n")
+        nm = "\033[1;36m▶\033[0m" if idx == len(sessions) else " "
+        sys.stdout.write(f"\033[K{nm} ＋ 新建会话\n")
+        sys.stdout.write(f"\033[K\n")
+        sys.stdout.write(f"\033[K↑↓/Tab 选择  Enter 打开  Space 固定  N 新建  Q 退出\n")
+        if pinned_name:
+            sys.stdout.write(f"\033[K📌 已固定: {pinned_name}（启动时自动加载）\n")
         else:
-            event.app.exit(result="NEW")
+            sys.stdout.write(f"\033[K\n")
+        sys.stdout.write(f"\033[{lines_total}A")
+        sys.stdout.flush()
 
-    @kb.add("space")
-    def _(event):
-        if idx[0] < len(sessions_list):
-            s = sessions_list[idx[0]]
-            if s["name"] == pinned_name[0]:
-                clear_pinned_session()
-                pinned_name[0] = ""
-            else:
-                set_pinned_session(s["name"], s["source"])
-                pinned_name[0] = s["name"]
-
-    @kb.add("n")
-    def _(event): event.app.exit(result="NEW")
-
-    @kb.add("q")
-    def _(event): event.app.exit(result=None)
-
-    @kb.add("escape")
-    def _(event): event.app.exit(result=None)
-
-    @kb.add("c-c")
-    def _(event): event.app.exit(result=None)
-
-    ps = PS(key_bindings=kb, bottom_toolbar=_picker_toolbar, style=CHAT_STYLE)
-    try:
-        return ps.prompt("")
-    except (EOFError, KeyboardInterrupt):
-        return None
+    _redraw()
+    while True:
+        key = msvcrt.getch()
+        if key == b"\xe0":
+            key = msvcrt.getch()
+            if key == b"H": idx = (idx - 1) % count; _redraw()
+            elif key == b"P": idx = (idx + 1) % count; _redraw()
+        elif key == b"\t": idx = (idx + 1) % count; _redraw()
+        elif key == b"\r":
+            sys.stdout.write(f"\033[{lines_total}B\n"); sys.stdout.flush()
+            if idx < len(sessions): return sessions[idx]
+            return "NEW"
+        elif key == b" ":
+            if idx < len(sessions):
+                s = sessions[idx]
+                if s["name"] == pinned_name:
+                    clear_pinned_session(); pinned_name = ""
+                else:
+                    set_pinned_session(s["name"], s["source"]); pinned_name = s["name"]
+                _redraw()
+        elif key in (b"n", b"N"): sys.stdout.write(f"\033[{lines_total}B\n"); sys.stdout.flush(); return "NEW"
+        elif key in (b"q", b"Q", b"\x1b"): sys.stdout.write(f"\033[{lines_total}B\n"); sys.stdout.flush(); return None
 
 
 def run_shell_with_session(data: dict) -> None:
