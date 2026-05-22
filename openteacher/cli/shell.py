@@ -887,21 +887,23 @@ def _run_repl_loop(loop: ConversationLoop) -> None:
 def _extract_options(text: str) -> list | None:
     import re
     options = []
-    # Match [N] at start of line, capture text until next [N] or end
-    pattern = r"(?:^|\n)\[(\d+)\]\s*(.+?)(?=\n\[(?:\d+)\]|\n*$)"
-    for m in re.finditer(pattern, text, re.DOTALL):
-        num = int(m.group(1))
-        desc = m.group(2).strip().rstrip("。，.")
-        options.append({"num": num, "text": desc})
-    if len(options) >= 2:
-        return options
-    # Fallback: try matching more loosely
-    pattern2 = r"\[(\d+)\]\s*([^\[]+?)(?=\[|\Z)"
-    for m in re.finditer(pattern2, text, re.DOTALL):
-        num = int(m.group(1))
-        desc = m.group(2).strip().rstrip("。，.")
-        if not any(o["num"] == num for o in options):
-            options.append({"num": num, "text": desc})
+
+    # Match all common option formats: [1], 1., 1), (1)
+    patterns = [
+        r"(?:^|\n)\[(\d+)\]\s*(.+?)(?=\n\[(?:\d+)\]|\n\d+[\.\)]|\Z)",
+        r"(?:^|\n)(\d+)[\.\)]\s*(.+?)(?=\n\d+[\.\)]|\Z)",
+        r"(?:^|\n)\((\d+)\)\s*(.+?)(?=\n\(\d+\)|\Z)",
+        r"\[(\d+)\]\s*([^\[]+?)(?=\[|\Z)",  # loose fallback
+    ]
+    for pattern in patterns:
+        for m in re.finditer(pattern, text, re.DOTALL):
+            num = int(m.group(1))
+            desc = m.group(2).strip().rstrip(".。,， ")
+            if not any(o["num"] == num for o in options):
+                options.append({"num": num, "text": desc})
+        if len(options) >= 2:
+            break
+
     return options if len(options) >= 2 else None
 
 
