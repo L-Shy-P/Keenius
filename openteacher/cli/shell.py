@@ -910,7 +910,7 @@ def _pick_choice_interactive(options: list, session, loop):
     import sys, msvcrt
 
     # Print options once
-    console.print("[bold]请选择[/bold] (↑↓ 移动  Enter 确认  Esc 跳过)")
+    console.print("[bold]请选择[/bold] (↑↓/Tab 移动  Enter 确认  Esc 跳过)")
     console.print()
     option_lines = []
     for opt in options:
@@ -943,6 +943,9 @@ def _pick_choice_interactive(options: list, session, loop):
             elif key == b"P":
                 idx = (idx + 1) % len(options)
                 _redraw()
+        elif key == b"\t":  # Tab
+            idx = (idx + 1) % len(options)
+            _redraw()
         elif key == b"\r":
             # Move past options area
             sys.stdout.write(f"\033[{len(options)}B\n")
