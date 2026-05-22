@@ -906,22 +906,57 @@ def _extract_options(text: str) -> list | None:
 
 
 def _pick_choice_interactive(options: list, session, loop):
-    """Simple choice picker: type number to select."""
-    lines = []
-    for i, opt in enumerate(options):
-        lines.append(f"  [{opt['num']}] {opt['text'][:120]}")
-    console.print("\n".join(lines))
-    console.print()
-    console.print("[dim]输入数字选择，直接输入文字则作为自由回复[/dim]")
+    """Keyboard-driven choice: Up/Down to select, Enter to confirm, Esc to cancel."""
+    import sys, msvcrt
 
-    choice = input("> ").strip()
-    if choice.isdigit():
-        idx = int(choice) - 1
-        if 0 <= idx < len(options):
+    # Print options once
+    console.print("[bold]请选择[/bold] (↑↓ 移动  Enter 确认  Esc 跳过)")
+    console.print()
+    option_lines = []
+    for opt in options:
+        option_lines.append(f"  [{opt['num']}] {opt['text'][:120]}")
+    console.print("\n".join(option_lines))
+    line_count = len(option_lines) + 2  # options + header + blank
+
+    idx = 0
+    # Move cursor up to first option
+    sys.stdout.write(f"\033[{line_count}A")
+    sys.stdout.flush()
+
+    def _redraw():
+        # Move to first option line, redraw all
+        for i, opt in enumerate(options):
+            prefix = "\033[1;36m▶\033[0m" if i == idx else " "
+            sys.stdout.write(f"\033[K{prefix} [{opt['num']}] {opt['text'][:120]}\n")
+        # Move back up
+        sys.stdout.write(f"\033[{len(options)}A")
+        sys.stdout.flush()
+
+    _redraw()
+    while True:
+        key = msvcrt.getch()
+        if key == b"\xe0":
+            key = msvcrt.getch()
+            if key == b"H":
+                idx = (idx - 1) % len(options)
+                _redraw()
+            elif key == b"P":
+                idx = (idx + 1) % len(options)
+                _redraw()
+        elif key == b"\r":
+            # Move past options area
+            sys.stdout.write(f"\033[{len(options)}B\n")
+            sys.stdout.flush()
+            console.print(f"[dim]已选择: {options[idx]['text'][:80]}[/dim]")
             return options[idx]["text"]
-    if choice:
-        return choice
-    return None
+        elif key == b"\x1b":
+            sys.stdout.write(f"\033[{len(options)}B\n")
+            sys.stdout.flush()
+            return None
+        elif key == b"\x03":
+            sys.stdout.write(f"\033[{len(options)}B\n")
+            sys.stdout.flush()
+            return None
 
 
 def _review_curriculum(lessons: list) -> list[int]:
