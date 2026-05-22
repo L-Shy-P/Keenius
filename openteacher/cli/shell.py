@@ -507,7 +507,7 @@ def _pick_from_list(options: list, title: str = "") -> int | None:
     idx = [0]
 
     def _toolbar():
-        lines = [f"[bold]{title}[/bold]"] if title else []
+        lines = [f"{title}"] if title else []
         for i, opt in enumerate(options):
             marker = "▶" if i == idx[0] else " "
             lines.append(f"{marker} [{opt['num']}] {opt['text'][:100]}")
@@ -676,11 +676,11 @@ def session_picker(sessions: list[dict]) -> dict | str | None:
             src = "项目" if s["source"] == "project" else "全局"
             subj = s["subject"] or "(无)"
             lines.append(
-                f"{marker} {pin_mark} [cyan]{s['name']:20s}[/cyan] "
+                f"{marker} {pin_mark} {s['name']:20s}  "
                 f"📚 {subj:16s} 💬 {s['messages']:3d}条  {s['saved_at']}  {src}"
             )
         lines.append(
-            f"{'▶' if idx[0] == len(sessions_list) else ' '} [bold]＋新建会话[/bold]"
+            f"{'▶' if idx[0] == len(sessions_list) else ' '} ＋新建会话"
         )
         lines.append("")
         lines.append("↑↓ 选择  Enter 打开  Space 固定/取消  N 新建  Q 退出")
@@ -885,25 +885,13 @@ def _run_repl_loop(loop: ConversationLoop) -> None:
 
 
 def _extract_options(text: str) -> list | None:
+    """Extract [N] options only. Never match N. or N) which are questions."""
     import re
     options = []
-
-    # Match all common option formats: [1], 1., 1), (1)
-    patterns = [
-        r"(?:^|\n)\[(\d+)\]\s*(.+?)(?=\n\[(?:\d+)\]|\n\d+[\.\)]|\Z)",
-        r"(?:^|\n)(\d+)[\.\)]\s*(.+?)(?=\n\d+[\.\)]|\Z)",
-        r"(?:^|\n)\((\d+)\)\s*(.+?)(?=\n\(\d+\)|\Z)",
-        r"\[(\d+)\]\s*([^\[]+?)(?=\[|\Z)",  # loose fallback
-    ]
-    for pattern in patterns:
-        for m in re.finditer(pattern, text, re.DOTALL):
-            num = int(m.group(1))
-            desc = m.group(2).strip().rstrip(".。,， ")
-            if not any(o["num"] == num for o in options):
-                options.append({"num": num, "text": desc})
-        if len(options) >= 2:
-            break
-
+    for m in re.finditer(r"\[(\d+)\]\s*(.+?)(?=\n\[(?:\d+)\]|\n*$)", text, re.DOTALL):
+        num = int(m.group(1))
+        desc = m.group(2).strip().rstrip(".。,， ")
+        options.append({"num": num, "text": desc})
     return options if len(options) >= 2 else None
 
 
@@ -912,21 +900,18 @@ def _pick_choice_interactive(options: list, session, loop):
     from prompt_toolkit.key_binding import KeyBindings
     from prompt_toolkit import PromptSession as PS
 
+    # Display options as Rich panel above the prompt
+    from rich.panel import Panel
+    lines = []
+    for i, opt in enumerate(options):
+        prefix = "▶ " if i == 0 else "  "
+        lines.append(f"{prefix}[{opt['num']}] {opt['text'][:120]}")
+    panel = Panel("\n".join(lines), border_style="cyan", title="请选择", title_align="left")
+    console.print()
+    console.print(panel)
+
     kb = KeyBindings()
     idx = [0]
-    note_mode = [False]
-    notes = [""]
-
-    def _toolbar():
-        lines = []
-        for i, opt in enumerate(options):
-            marker = "▶" if i == idx[0] else " "
-            lines.append(f"{marker} [{opt['num']}] {opt['text'][:100]}")
-        if note_mode[0]:
-            lines.append(f"  备注: {notes[0]}_")
-        else:
-            lines.append("↑↓ 选择  Enter 确认  Space 备注  Esc 跳过")
-        return "  ".join(lines)
 
     @kb.add("up")
     def _(event): idx[0] = (idx[0] - 1) % len(options)
@@ -942,30 +927,47 @@ def _pick_choice_interactive(options: list, session, loop):
 
     @kb.add("enter")
     def _(event):
-        result = options[idx[0]]["text"]
-        if notes[0]:
-            result += f"。补充: {notes[0]}"
-        event.app.exit(result=result)
+        event.app.exit(result=options[idx[0]]["text"])
 
     @kb.add("space")
-    def _(event): note_mode[0] = True
+    def _(event):
+        # Space enters note mode — allow typing
+        event.app.exit(result="__NOTE_MODE__")
 
     @kb.add("escape")
     def _(event): event.app.exit(result=None)
 
-    @kb.add("<any>")
-    def _(event):
-        if note_mode[0]:
-            if event.data == "backspace":
-                notes[0] = notes[0][:-1]
-            elif len(event.data) == 1:
-                notes[0] += event.data
+    @kb.add("c-c")
+    def _(event): event.app.exit(result=None)
 
-    ps = PS(key_bindings=kb, bottom_toolbar=_toolbar, style=CHAT_STYLE)
-    try:
-        return ps.prompt("")
-    except (EOFError, KeyboardInterrupt):
-        return None
+    def _toolbar():
+        return f"↑↓/Tab 选择  Enter 确认  Space 备注  Esc 跳过  [{idx[0]+1}/{len(options)}]"
+
+    while True:
+        ps = PS(key_bindings=kb, bottom_toolbar=_toolbar, style=CHAT_STYLE)
+        try:
+            result = ps.prompt("")
+        except (EOFError, KeyboardInterrupt):
+            return None
+
+        if result == "__NOTE_MODE__":
+            # Enter note mode: take free text
+            from prompt_toolkit import PromptSession as PS2
+            nk = KeyBindings()
+            @nk.add("enter")
+            def _(event): event.app.exit(result="done")
+            @nk.add("escape")
+            def _(event): event.app.exit(result=None)
+            nps = PS2(key_bindings=nk, bottom_toolbar=lambda: "输入备注，Enter 确认，Esc 取消")
+            try:
+                note = nps.prompt("备注: ")
+            except (EOFError, KeyboardInterrupt):
+                note = None
+            if note:
+                result = options[idx[0]]["text"] + f"。补充: {note}"
+                return result
+            continue  # go back to picker
+        return result
 
 
 def _review_curriculum(lessons: list) -> list[int]:
@@ -989,14 +991,14 @@ def _review_curriculum(lessons: list) -> list[int]:
             skipped.add(lid)
 
     def _toolbar():
-        lines = ["[bold]审核课程 — 勾掉已会的内容[/bold]"]
+        lines = ["审核课程 — 勾掉已会的内容"]
         lines.append("")
         for i, lesson in enumerate(lesson_list):
             marker = "▶" if i == idx[0] else " "
             check = "[x]" if lesson["id"] in skipped else "[ ]"
             lines.append(f"{marker} {check} {lesson['title']}")
             if lesson.get("description"):
-                lines.append(f"     [dim]{lesson['description']}[/dim]")
+                lines.append(f"     {lesson['description']}")
         lines.append("")
         lines.append(
             f"第 {idx[0]+1}/{count} 课  Space 勾选/取消  A 全选  I 反选  "
