@@ -646,56 +646,60 @@ CHAT_STYLE = Style.from_dict({
 
 def session_picker(sessions: list[dict]) -> dict | str | None:
     """Keyboard session picker: Rich display + msvcrt keys. No prompt_toolkit."""
-    import sys, msvcrt
+    import msvcrt
     from openteacher.agent.sessions import set_pinned_session, clear_pinned_session, get_pin_config
 
     pin_config = get_pin_config()
     pinned_name = pin_config.get("auto_load", "")
     count = len(sessions) + 1
     idx = 0
-    lines_total = count + 4  # sessions + new + blank + help + pin-status
+    from rich.panel import Panel
+    from rich.live import Live
 
-    def _redraw():
-        sys.stdout.write(f"\033[{lines_total}A\033[J")
+    def _render():
+        lines = []
         for i, s in enumerate(sessions):
-            marker = "\033[1;36m▶\033[0m" if i == idx else " "
             pin = "📌" if s["name"] == pinned_name else " "
             subj = s["subject"] or "(无)"
             src = "项目" if s["source"] == "project" else "全局"
-            sys.stdout.write(f"\033[K{marker} {pin} {s['name']:<24s} 📚 {subj:<16s} 💬 {s['messages']:>3d}条  {s['saved_at']}  {src}\n")
-        nm = "\033[1;36m▶\033[0m" if idx == len(sessions) else " "
-        sys.stdout.write(f"\033[K{nm} ＋ 新建会话\n")
-        sys.stdout.write(f"\033[K\n")
-        sys.stdout.write(f"\033[K↑↓/Tab 选择  Enter 打开  Space 固定  N 新建  Q 退出\n")
-        if pinned_name:
-            sys.stdout.write(f"\033[K📌 已固定: {pinned_name}（启动时自动加载）\n")
+            line = f"{pin} {s['name']:<24s} 📚 {subj:<16s} 💬 {s['messages']:>3d}条  {s['saved_at']}  {src}"
+            if i == idx:
+                lines.append(f"[bold cyan]▶ {line}[/bold cyan]")
+            else:
+                lines.append(f"[dim]  {line}[/dim]")
+        new_line = "＋ 新建会话"
+        if idx == len(sessions):
+            lines.append(f"[bold cyan]▶ {new_line}[/bold cyan]")
         else:
-            sys.stdout.write(f"\033[K\n")
-        sys.stdout.write(f"\033[{lines_total}A")
-        sys.stdout.flush()
+            lines.append(f"[dim]  {new_line}[/dim]")
+        footer = "↑↓/Tab 选择  Enter 打开  Space 固定  N 新建  Q 退出"
+        if pinned_name:
+            footer += f"\n📌 已固定: {pinned_name}（启动时自动加载）"
+        return Panel("\n".join(lines) + "\n\n" + footer, border_style="cyan", title="📂 会话列表")
 
-    _redraw()
-    while True:
-        key = msvcrt.getch()
-        if key == b"\xe0":
+    live = Live(_render(), console=console, refresh_per_second=30, transient=True)
+    with live:
+        while True:
             key = msvcrt.getch()
-            if key == b"H": idx = (idx - 1) % count; _redraw()
-            elif key == b"P": idx = (idx + 1) % count; _redraw()
-        elif key == b"\t": idx = (idx + 1) % count; _redraw()
-        elif key == b"\r":
-            sys.stdout.write(f"\033[{lines_total}B\n"); sys.stdout.flush()
-            if idx < len(sessions): return sessions[idx]
-            return "NEW"
-        elif key == b" ":
-            if idx < len(sessions):
-                s = sessions[idx]
-                if s["name"] == pinned_name:
-                    clear_pinned_session(); pinned_name = ""
-                else:
-                    set_pinned_session(s["name"], s["source"]); pinned_name = s["name"]
-                _redraw()
-        elif key in (b"n", b"N"): sys.stdout.write(f"\033[{lines_total}B\n"); sys.stdout.flush(); return "NEW"
-        elif key in (b"q", b"Q", b"\x1b"): sys.stdout.write(f"\033[{lines_total}B\n"); sys.stdout.flush(); return None
+            if key == b"\xe0":
+                key = msvcrt.getch()
+                if key == b"H": idx = (idx - 1) % count
+                elif key == b"P": idx = (idx + 1) % count
+            elif key == b"\t": idx = (idx + 1) % count
+            elif key == b"\r":
+                if idx < len(sessions): return sessions[idx]
+                return "NEW"
+            elif key == b" ":
+                if idx < len(sessions):
+                    s = sessions[idx]
+                    if s["name"] == pinned_name:
+                        clear_pinned_session(); pinned_name = ""
+                    else:
+                        set_pinned_session(s["name"], s["source"]); pinned_name = s["name"]
+            elif key in (b"n", b"N"): return "NEW"
+            elif key in (b"q", b"Q", b"\x1b"): return None
+            else: continue
+            live.update(_render())
 
 
 def run_shell_with_session(data: dict) -> None:
@@ -871,60 +875,46 @@ def _extract_options(text: str) -> list | None:
 
 
 def _pick_choice_interactive(options: list, session, loop):
-    """Keyboard-driven choice: Up/Down to select, Enter to confirm, Esc to cancel."""
-    import sys, msvcrt
-
-    # Print options once
-    console.print("[bold]请选择[/bold] (↑↓/Tab 移动  Enter 确认  Esc 跳过)")
-    console.print()
-    option_lines = []
-    for opt in options:
-        option_lines.append(f"  [{opt['num']}] {opt['text'][:120]}")
-    console.print("\n".join(option_lines))
-    line_count = len(option_lines) + 2  # options + header + blank
+    """Show choices in Rich panel, keyboard select. No duplicate display."""
+    import msvcrt
+    from rich.panel import Panel
+    from rich.live import Live
 
     idx = 0
-    # Move cursor up to first option
-    sys.stdout.write(f"\033[{line_count}A")
-    sys.stdout.flush()
 
-    def _redraw():
-        # Move to first option line, redraw all
+    def _render():
+        lines = []
         for i, opt in enumerate(options):
-            prefix = "\033[1;36m▶\033[0m" if i == idx else " "
-            sys.stdout.write(f"\033[K{prefix} [{opt['num']}] {opt['text'][:120]}\n")
-        # Move back up
-        sys.stdout.write(f"\033[{len(options)}A")
-        sys.stdout.flush()
+            if i == idx:
+                lines.append(f"[bold cyan]▶ [{opt['num']}] {opt['text'][:120]}[/bold cyan]")
+            else:
+                lines.append(f"[dim]  [{opt['num']}] {opt['text'][:120]}[/dim]")
+        return Panel(
+            "\n".join(lines),
+            border_style="cyan",
+            title="请选择 (↑↓/Tab 移动  Enter 确认  Esc 跳过)",
+            title_align="left",
+        )
 
-    _redraw()
-    while True:
-        key = msvcrt.getch()
-        if key == b"\xe0":
+    with Live(_render(), console=console, refresh_per_second=30, transient=True) as live:
+        while True:
             key = msvcrt.getch()
-            if key == b"H":
-                idx = (idx - 1) % len(options)
-                _redraw()
-            elif key == b"P":
+            if key == b"\xe0":
+                key = msvcrt.getch()
+                if key == b"H":
+                    idx = (idx - 1) % len(options)
+                elif key == b"P":
+                    idx = (idx + 1) % len(options)
+            elif key == b"\t":
                 idx = (idx + 1) % len(options)
-                _redraw()
-        elif key == b"\t":  # Tab
-            idx = (idx + 1) % len(options)
-            _redraw()
-        elif key == b"\r":
-            # Move past options area
-            sys.stdout.write(f"\033[{len(options)}B\n")
-            sys.stdout.flush()
-            console.print(f"[dim]已选择: {options[idx]['text'][:80]}[/dim]")
-            return options[idx]["text"]
-        elif key == b"\x1b":
-            sys.stdout.write(f"\033[{len(options)}B\n")
-            sys.stdout.flush()
-            return None
-        elif key == b"\x03":
-            sys.stdout.write(f"\033[{len(options)}B\n")
-            sys.stdout.flush()
-            return None
+            elif key == b"\r":
+                console.print(f"[dim]已选择: {options[idx]['text'][:80]}[/dim]")
+                return options[idx]["text"]
+            elif key in (b"\x1b", b"\x03"):
+                return None
+            else:
+                continue
+            live.update(_render())
 
 
 def _review_curriculum(lessons: list) -> list[int]:
