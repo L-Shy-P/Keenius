@@ -93,7 +93,7 @@ class ConversationLoop:
         tool_call_buffer: dict[int, dict] = {}  # index → {id, name, args_str}
 
         first_token = True
-        with Live("[dim]⏳ 思考中...[/dim]", console=display.console, refresh_per_second=20, transient=False) as live:
+        with Live("[dim]⠋ 思考中...[/dim]", console=display.console, refresh_per_second=10, transient=False) as live:
             for chunk in stream:
                 delta = chunk.choices[0].delta if chunk.choices else None
                 if delta is None:

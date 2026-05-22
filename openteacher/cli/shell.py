@@ -14,6 +14,7 @@ from prompt_toolkit.document import Document
 
 from openteacher.agent.display import (
     console,
+    print_logo,
     print_welcome,
     print_assistant_header,
     print_markdown,
@@ -755,6 +756,7 @@ def run_shell(
         teaching_style=teaching_style, model=model,
     )
 
+    print_logo()
     print_welcome()
 
     try:

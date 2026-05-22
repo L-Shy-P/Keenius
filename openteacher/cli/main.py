@@ -86,9 +86,10 @@ def _warn_multiple_sessions(sessions: list[dict]) -> None:
 
 
 def _show_session_picker(sessions: list[dict]) -> dict | str | None:
-    """Show interactive session picker with welcome banner."""
-    from openteacher.agent.display import print_welcome
+    """Show interactive session picker with logo and welcome."""
+    from openteacher.agent.display import print_logo, print_welcome
     from openteacher.cli.shell import session_picker
+    print_logo()
     print_welcome()
     return session_picker(sessions)
 
