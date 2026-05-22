@@ -7,7 +7,6 @@ from __future__ import annotations
 from prompt_toolkit import PromptSession
 from prompt_toolkit.styles import Style
 from prompt_toolkit.history import FileHistory
-from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.document import Document
@@ -24,6 +23,13 @@ from openteacher.agent.display import (
 )
 from openteacher.agent.loop import ConversationLoop
 from openteacher.config import DATA_DIR
+
+# ── Toolbar helpers: strip Rich markup for prompt_toolkit (plain text only) ─
+
+def _plain(text: str) -> str:
+    """Strip Rich markup tags for prompt_toolkit bottom toolbar."""
+    import re
+    return re.sub(r"\[/?\w+\]|\[/?\w+ [^\]]*\]", "", text)
 
 # ── Slash command registry ────────────────────────────────────────────
 
@@ -777,8 +783,7 @@ def _run_repl_loop(loop: ConversationLoop) -> None:
     history_file = DATA_DIR / "chat_history.txt"
     session = PromptSession(
         history=FileHistory(str(history_file)),
-        auto_suggest=AutoSuggestFromHistory(),
-        completer=SlashCompleter(),
+                completer=SlashCompleter(),
         complete_while_typing=True,
         key_bindings=repl_bindings,
         style=CHAT_STYLE,
