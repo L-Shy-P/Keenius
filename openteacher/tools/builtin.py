@@ -602,6 +602,59 @@ def write_lesson_content(
     return f"未找到第 {lesson_id} 课。"
 
 
+@register_tool(
+    name="generate_curriculum",
+    description=(
+        "生成课程大纲，写入学习计划文件。每节课包含 title 和 description。"
+        "调用后会覆盖已有课程列表。"
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "lessons": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string", "description": "课程标题"},
+                        "description": {"type": "string", "description": "一句话描述本课内容"},
+                    },
+                    "required": ["title", "description"],
+                },
+                "description": "课程列表，按教学顺序排列",
+            },
+        },
+        "required": ["lessons"],
+    },
+)
+def generate_curriculum(lessons: list[dict]) -> str:
+    import json, datetime
+    from openteacher.config import PLANS_DIR
+    from openteacher.tutor.planner import create_plan, add_lesson, save_plan
+
+    PLANS_DIR.mkdir(parents=True, exist_ok=True)
+    plan_files = list(PLANS_DIR.glob("*.json"))
+    if plan_files:
+        latest = max(plan_files, key=lambda p: p.stat().st_mtime)
+        plan = json.loads(latest.read_text(encoding="utf-8"))
+    else:
+        plan = create_plan("general")
+
+    plan["lessons"] = []
+    for i, lesson in enumerate(lessons):
+        plan["lessons"].append({
+            "id": i + 1,
+            "title": lesson["title"],
+            "description": lesson.get("description", ""),
+            "status": "pending",
+            "skipped": False,
+            "created_at": datetime.datetime.now().isoformat(),
+        })
+
+    save_plan(plan["subject"], plan)
+    return f"📋 课程大纲已生成: {len(lessons)} 节课"
+
+
 def plan_summary_tool() -> str:
     from openteacher.config import PLANS_DIR
     import json

@@ -842,6 +842,38 @@ def _run_repl_loop(loop: ConversationLoop) -> None:
                 print_assistant_header()
                 continue
 
+        # Curriculum review — if lesson plan has pending lessons, offer review
+        if loop.phase == "planning":
+            from openteacher.config import PLANS_DIR
+            import json
+            plan_files = list(PLANS_DIR.glob("*.json"))
+            if plan_files:
+                latest = max(plan_files, key=lambda p: p.stat().st_mtime)
+                plan = json.loads(latest.read_text(encoding="utf-8"))
+                lessons = plan.get("lessons", [])
+                pending = [l for l in lessons if l["status"] == "pending" and not l.get("skipped")]
+                if len(pending) >= 2:  # Only offer review if there's meaningful content
+                    skipped_ids = _review_curriculum(pending)
+                    if skipped_ids is not None:
+                        # Mark skipped lessons
+                        for lesson in lessons:
+                            if lesson["id"] in skipped_ids:
+                                lesson["skipped"] = True
+                                lesson["status"] = "completed"
+                        from openteacher.tutor.planner import save_plan
+                        save_plan(plan["subject"], plan)
+                        if skipped_ids:
+                            loop.messages.append({
+                                "role": "user",
+                                "content": f"我已学会以下课程，请从计划中移除并调整后续内容: {', '.join(str(i) for i in skipped_ids)}",
+                            })
+                            response = loop.send_message(
+                                f"我已学会以下课程，请从计划中移除并调整后续内容: {', '.join(str(i) for i in skipped_ids)}"
+                            )
+                            _auto_save_silent(loop)
+                            print_assistant_header()
+                            continue
+
         print_assistant_header()
 
 
@@ -906,6 +938,87 @@ def _pick_choice_interactive(options: list, session, loop):
                 notes[0] = notes[0][:-1]
             elif len(event.data) == 1:
                 notes[0] += event.data
+
+    ps = PS(key_bindings=kb, bottom_toolbar=_toolbar, style=CHAT_STYLE)
+    try:
+        return ps.prompt("")
+    except (EOFError, KeyboardInterrupt):
+        return None
+
+
+def _review_curriculum(lessons: list) -> list[int]:
+    """Interactive curriculum review. Space=toggle, A=all, I=invert, Enter=confirm.
+    Returns list of skipped lesson IDs (lessons user already knows)."""
+    from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit import PromptSession as PS
+
+    skipped = set()  # lesson IDs marked as "already know"
+    idx = [0]
+    lesson_list = lessons
+    count = len(lessons)
+
+    kb = KeyBindings()
+
+    def _toggle():
+        lid = lesson_list[idx[0]]["id"]
+        if lid in skipped:
+            skipped.discard(lid)
+        else:
+            skipped.add(lid)
+
+    def _toolbar():
+        lines = ["[bold]审核课程 — 勾掉已会的内容[/bold]"]
+        lines.append("")
+        for i, lesson in enumerate(lesson_list):
+            marker = "▶" if i == idx[0] else " "
+            check = "[x]" if lesson["id"] in skipped else "[ ]"
+            lines.append(f"{marker} {check} {lesson['title']}")
+            if lesson.get("description"):
+                lines.append(f"     [dim]{lesson['description']}[/dim]")
+        lines.append("")
+        lines.append(
+            f"Space 勾选/取消  A 全选  I 反选  ↑↓/Tab 移动  Enter 确认  "
+            f"已勾 {len(skipped)}/{count}"
+        )
+        return "  ".join(lines)
+
+    @kb.add("up")
+    def _(event): idx[0] = (idx[0] - 1) % count
+
+    @kb.add("down")
+    def _(event): idx[0] = (idx[0] + 1) % count
+
+    @kb.add("tab")
+    def _(event): idx[0] = (idx[0] + 1) % count
+
+    @kb.add("s-tab")
+    def _(event): idx[0] = (idx[0] - 1) % count
+
+    @kb.add("space")
+    def _(event): _toggle()
+
+    @kb.add("a")
+    def _(event):
+        for lesson in lesson_list:
+            skipped.add(lesson["id"])
+
+    @kb.add("i")
+    def _(event):
+        for lesson in lesson_list:
+            lid = lesson["id"]
+            if lid in skipped:
+                skipped.discard(lid)
+            else:
+                skipped.add(lid)
+
+    @kb.add("enter")
+    def _(event): event.app.exit(result=list(skipped))
+
+    @kb.add("escape")
+    def _(event): event.app.exit(result=None)
+
+    @kb.add("c-c")
+    def _(event): event.app.exit(result=None)
 
     ps = PS(key_bindings=kb, bottom_toolbar=_toolbar, style=CHAT_STYLE)
     try:
