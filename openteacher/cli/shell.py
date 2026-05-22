@@ -887,9 +887,22 @@ def _run_repl_loop(loop: ConversationLoop) -> None:
 def _extract_options(text: str) -> list | None:
     import re
     options = []
-    for m in re.finditer(r"\[(\d+)\]\s*(.+?)(?=\n\[|\n\n|\Z)", text, re.DOTALL):
-        options.append({"num": int(m.group(1)), "text": m.group(2).strip()})
-    return options if len(options) >= 2 else None  # need at least 2 to offer choice
+    # Match [N] at start of line, capture text until next [N] or end
+    pattern = r"(?:^|\n)\[(\d+)\]\s*(.+?)(?=\n\[(?:\d+)\]|\n*$)"
+    for m in re.finditer(pattern, text, re.DOTALL):
+        num = int(m.group(1))
+        desc = m.group(2).strip().rstrip("。，.")
+        options.append({"num": num, "text": desc})
+    if len(options) >= 2:
+        return options
+    # Fallback: try matching more loosely
+    pattern2 = r"\[(\d+)\]\s*([^\[]+?)(?=\[|\Z)"
+    for m in re.finditer(pattern2, text, re.DOTALL):
+        num = int(m.group(1))
+        desc = m.group(2).strip().rstrip("。，.")
+        if not any(o["num"] == num for o in options):
+            options.append({"num": num, "text": desc})
+    return options if len(options) >= 2 else None
 
 
 def _pick_choice_interactive(options: list, session, loop):
