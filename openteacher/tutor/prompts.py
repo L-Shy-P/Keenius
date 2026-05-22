@@ -128,7 +128,7 @@ b) 分布：
 ### 关键
 - 模板仅供参考，根据学生回答和学科动态调整。不是照抄。
 - 每轮一个问题+选项。不解释、不寒暄。
-- 完成 → `assess_student` 每次写入 → 不超过 8 轮 → 进 planning。
+- 完成 → `assess_student` 每次写入 → 不超过 8 轮 → 进阶段 1.5。
 """
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -211,31 +211,27 @@ HUMANITIES_AUGMENT = """
 """
 
 SUBJECT_AUGMENTS = {
-    # 理工
-    "programming": PROGRAMMING_AUGMENT, "coding": PROGRAMMING_AUGMENT,
+    # 编程
     "python": PROGRAMMING_AUGMENT, "java": PROGRAMMING_AUGMENT,
     "c++": PROGRAMMING_AUGMENT, "cpp": PROGRAMMING_AUGMENT,
-    "rust": PROGRAMMING_AUGMENT, "golang": PROGRAMMING_AUGMENT,
+    "rust": PROGRAMMING_AUGMENT, "go": PROGRAMMING_AUGMENT,
     "javascript": PROGRAMMING_AUGMENT, "typescript": PROGRAMMING_AUGMENT,
-    "computer": PROGRAMMING_AUGMENT, "算法": PROGRAMMING_AUGMENT, "数据结构": PROGRAMMING_AUGMENT,
-    "math": MATH_AUGMENT, "mathematics": MATH_AUGMENT,
-    "physics": MATH_AUGMENT, "chemistry": MATH_AUGMENT,
-    "biology": MATH_AUGMENT, "engineering": MATH_AUGMENT,
+    "编程": PROGRAMMING_AUGMENT, "算法": PROGRAMMING_AUGMENT, "数据结构": PROGRAMMING_AUGMENT,
+    # 数学 / 理科
     "数学": MATH_AUGMENT, "物理": MATH_AUGMENT, "化学": MATH_AUGMENT,
     "生物": MATH_AUGMENT, "工程": MATH_AUGMENT,
+    "math": MATH_AUGMENT, "physics": MATH_AUGMENT, "chemistry": MATH_AUGMENT,
     # 文科
-    "history": HUMANITIES_AUGMENT, "philosophy": HUMANITIES_AUGMENT,
-    "literature": HUMANITIES_AUGMENT, "politics": HUMANITIES_AUGMENT,
-    "economics": HUMANITIES_AUGMENT, "law": HUMANITIES_AUGMENT,
-    "sociology": HUMANITIES_AUGMENT, "psychology": HUMANITIES_AUGMENT,
-    "linguistics": HUMANITIES_AUGMENT, "art": HUMANITIES_AUGMENT,
     "历史": HUMANITIES_AUGMENT, "哲学": HUMANITIES_AUGMENT,
     "文学": HUMANITIES_AUGMENT, "政治": HUMANITIES_AUGMENT,
     "经济": HUMANITIES_AUGMENT, "法律": HUMANITIES_AUGMENT,
     "社会学": HUMANITIES_AUGMENT, "心理学": HUMANITIES_AUGMENT,
     "语言学": HUMANITIES_AUGMENT, "艺术": HUMANITIES_AUGMENT,
-    "英语": HUMANITIES_AUGMENT, "english": HUMANITIES_AUGMENT,
-    "日语": HUMANITIES_AUGMENT, "韩语": HUMANITIES_AUGMENT,
+    "history": HUMANITIES_AUGMENT, "philosophy": HUMANITIES_AUGMENT,
+    "economics": HUMANITIES_AUGMENT, "psychology": HUMANITIES_AUGMENT,
+    # 语言
+    "英语": HUMANITIES_AUGMENT, "日语": HUMANITIES_AUGMENT, "韩语": HUMANITIES_AUGMENT,
+    "english": HUMANITIES_AUGMENT,
 }
 
 # ═══════════════════════════════════════════════════════════════════════

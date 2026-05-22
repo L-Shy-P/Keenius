@@ -188,7 +188,7 @@ class ConversationLoop:
             "temperature": self.temperature,
             "turn_count": self.turn_count,
             "phase": self.phase,
-            "mode": self.mode,
+
             "created_at": self._created_at,
             "saved_at": datetime.now().isoformat(),
             "messages": self.messages,
@@ -205,7 +205,7 @@ class ConversationLoop:
         loop.temperature = data.get("temperature", 0.7)
         loop.turn_count = data.get("turn_count", 0)
         loop.phase = data.get("phase", "diagnosis")
-        loop.mode = data.get("mode", "mixed")
+
         loop._created_at = data.get("created_at", datetime.now().isoformat())
         loop.messages = data.get("messages", [])
         loop.running = True

@@ -1084,7 +1084,7 @@ def _toolbar_text(loop: ConversationLoop) -> str:
     parts = [phase_icons.get(loop.phase, "💬")]
     if loop.subject:
         parts.append(f"| 📚 {loop.subject}")
-    parts.append(f"| 🎯 {modes.get(loop.mode, loop.mode)}")
+
     parts.append(f"| 🤖 {loop.model}")
     parts.append(f"| 💬 {loop.turn_count}")
     return " ".join(parts)
