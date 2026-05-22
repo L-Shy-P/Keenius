@@ -39,9 +39,32 @@ def print_welcome() -> None:
 
 # ── Separators ──────────────────────────────────────────────────────
 
-def print_assistant_header() -> None:
+# ── Phase-aware visuals ──────────────────────────────────────────────
+
+_PHASE_STYLES = {
+    "diagnosis": "cyan",
+    "planning": "gold1",
+    "learning": "green",
+    "end": "dim cyan",
+}
+
+
+def print_assistant_header(phase: str = "") -> None:
+    style = _PHASE_STYLES.get(phase, "dim cyan")
     console.print()
-    console.print(Rule(style="dim cyan"))
+    console.print(Rule(style=style))
+
+
+def print_phase_banner(phase: str) -> None:
+    banners = {
+        "diagnosis": ("🔍 诊断中", "cyan"),
+        "planning": ("📋 制定计划", "gold1"),
+        "learning": ("📖 教学中", "green"),
+        "end": ("🏁 总结", "dim cyan"),
+    }
+    label, color = banners.get(phase, ("💬", "dim"))
+    console.print()
+    console.print(f"[{color}]  {label}[/{color}]")
 
 
 # ── Tool display ────────────────────────────────────────────────────

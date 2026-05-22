@@ -72,8 +72,39 @@ class ConversationLoop:
             response = self._stream_llm()
             if response is None:
                 return "（没有收到有效回复，请重试）"
+            self._detect_phase_transition(response)
             return response
         return "（工具调用次数过多，请简化你的问题）"
+
+    def _detect_phase_transition(self, response: str) -> None:
+        """Auto-advance phase based on LLM actions."""
+        # Check if any tools were called in this turn
+        # Phase transitions based on context and response content
+        if self.phase == "diagnosis":
+            # If LLM starts talking about teaching strategy or curriculum, move to planning
+            if any(kw in response for kw in ["教学方针", "学习计划", "课程大纲", "教学策略"]):
+                self.phase = "planning"
+                self._update_system_prompt()
+        elif self.phase == "planning":
+            # If LLM starts a lesson, move to learning
+            if any(kw in response for kw in ["开始上课", "第一课", "第 1 课", "📖 第"]):
+                self.phase = "learning"
+                self._update_system_prompt()
+
+    def _update_system_prompt(self) -> None:
+        """Rebuild system prompt for current phase."""
+        new_prompt = build_system_prompt(
+            subject=self.subject, language=self.language,
+            teaching_style=self.teaching_style, phase=self.phase,
+        )
+        if self.messages and self.messages[0]["role"] == "system":
+            self.messages[0] = {"role": "system", "content": new_prompt}
+
+    def set_phase(self, new_phase: str) -> None:
+        """Manually set the phase and update the system prompt."""
+        if new_phase in ("diagnosis", "planning", "learning", "end"):
+            self.phase = new_phase
+            self._update_system_prompt()
 
     def _stream_llm(self) -> str | None:
         """Stream LLM response, displaying text live. Returns final text or re-enters for tool calls."""
