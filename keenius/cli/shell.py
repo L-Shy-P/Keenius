@@ -75,16 +75,15 @@ class _PickerDisplay:
     def stop(self):
         self._active = False
 
-    def update(self, renderable, cursor_up=0, cursor_right=0):
+    def update(self, renderable, cursor_row=0, cursor_col=0):
         if self._active:
+            import sys
             console.clear()
             console.print(renderable)
-            if cursor_up or cursor_right:
-                import sys
-                sys.stdout.write(f"\033[{cursor_up}A")
-                if cursor_right:
-                    sys.stdout.write(f"\033[{cursor_right}C")
-                sys.stdout.flush()
+            if cursor_row:
+                # 绝对光标定位：\033[row;colH
+                console.file.write(f"\033[{cursor_row};{max(cursor_col, 1)}H")
+                console.file.flush()
 
 
 # ── 斜杠命令注册表 ────────────────────────────────────────────
@@ -1591,43 +1590,41 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
                 return i
         return i
 
+    # 追踪面板渲染后的内容行数，供光标定位用
+    _opt_content_lines = 0
+
     def _update_display():
         """渲染并定位光标到输入/编辑位置。"""
         renderable = _render()
-        up = 0
-        right = 0
+        if not (inputting or editing):
+            display.update(renderable)
+            return
+
+        row = 0
+        col = 0
         if inputting:
-            # 输入面板高度 3（上下边框 + 1 行内容），光标在内容行
-            up = 1  # 从底部跳过一个下边框
-            right = 4 + len(input_buf)  # 左边距 2 + 前缀 ▸  宽度 2
+            # 绝对行号：选项面板高度 + 输入面板顶边框 + 到内容行
+            # opt_panel = top(1) + pad(1) + N + pad(1) + bot(1) = N+4
+            # inp content row = 1 + N+4 + 1 = N+6
+            row = 1 + _opt_content_lines + 4 + 1
+            col = 1 + 2 + 2 + len(input_buf)  # 边框 + 内边距 + ▸  前缀 + 文字
         elif editing:
-            # 找到编辑选项在 opt_lines 中的视觉行号
-            opt_lines_count = 0
+            # 计算编辑行在选项面板内容中的视觉行号 (vi)
+            vi = 0
             if question:
-                opt_lines_count += 2  # 问题行 + 分隔线
-            edit_vi = -1
+                vi += 2
             for i, opt in enumerate(options):
-                if opt.get("separator"):
-                    opt_lines_count += 1
-                elif i == idx:
-                    edit_vi = opt_lines_count
+                if i == idx:
                     break
-                else:
-                    opt_lines_count += 1
-            if edit_vi >= 0:
-                total_opt_lines = 0
-                if question:
-                    total_opt_lines += 2
-                for opt in options:
-                    total_opt_lines += 1
-                # 从底部到编辑行的距离：
-                # inp_panel(3) + opt_bottom(2) + remaining opt lines below edit
-                below = total_opt_lines - edit_vi - 1
-                up = 3 + 2 + below
-                # 右边距：左边距 2 + 标记 2 + 数字前后
-                num_str = f"[{options[idx]['num']}]"
-                right = 2 + 2 + len(num_str) + 1 + len(edit_buf)
-        display.update(renderable, cursor_up=up, cursor_right=right)
+                vi += 1
+            # 绝对行号 = 顶边框(1) + 顶内边距(1) + vi
+            row = 1 + 1 + vi + 1
+            # 列 = 左边框(1) + 左内边距(2) + 编辑前缀 " ✎  [N] " + 文字
+            num_str = f"[{options[idx]['num']}]"
+            prefix_vis = 6 + len(num_str)  # " ✎  " + [N] + " "
+            col = 1 + 2 + prefix_vis + len(edit_buf)
+
+        display.update(renderable, cursor_row=row, cursor_col=col)
 
     console.print()
 
@@ -1718,6 +1715,8 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
         )
 
         from rich.console import Group
+        nonlocal _opt_content_lines
+        _opt_content_lines = len(opt_lines)
         return Group(opt_panel, inp_panel)
 
     display = _PickerDisplay()
