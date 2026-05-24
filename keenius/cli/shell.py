@@ -55,6 +55,21 @@ def _md_to_rich(text: str) -> str:
     return text
 
 
+def _visual_width(text: str) -> int:
+    """计算去除 Rich 标记后的可视列宽。CJK 字符占 2 列。"""
+    # 去除 Rich 标记 [...]，保留 [N] 数字选项
+    plain = re.sub(r"\[(?!\d+\])[^\]]*\]", "", text)
+    # 去除 Markdown 格式符
+    plain = re.sub(r"\*\*|\*|`", "", plain)
+    w = 0
+    for ch in plain:
+        if ord(ch) > 127:
+            w += 2
+        else:
+            w += 1
+    return w
+
+
 class _PickerDisplay:
     """替代 Rich Live 的简单 live display。
 
@@ -1604,8 +1619,9 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
         """渲染面板，移动不可见光标供 IME 定位。"""
         renderable = _render()
         if inputting:
-            up = 2  # console.print 末尾 \n + 输入面板下边框 = 2 行
-            right = 6 + len(input_buf)
+            up = 2
+            # 输入栏左边框(1) + 内边距(2) + ▸前缀  = 5 列
+            right = 5 + _visual_width(input_buf)
         elif editing:
             vi = 0
             if question:
@@ -1615,9 +1631,11 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
                     break
                 vi += 1
             N = _opt_content_lines
-            up = N + 5 - vi  # 之前验证行号正确的公式
+            up = N + 5 - vi
+            # 边框(1) + 内边距(2) + " ✎  [N] " 前缀 = 3 + 前缀可视宽
             num_str = f"[{options[idx]['num']}]"
-            right = 14 + len(num_str) + len(edit_buf)
+            prefix = f" ✎  {num_str} "
+            right = 3 + _visual_width(prefix) + _visual_width(_md_to_rich(edit_buf))
         else:
             up = 0
             right = 0
