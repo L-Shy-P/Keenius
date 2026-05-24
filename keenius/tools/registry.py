@@ -1,7 +1,7 @@
-"""Tool registry for OpenTeacher.
+﻿"""Keenius 工具注册系统。
 
-Tools are OpenAI-compatible function definitions that the LLM can call.
-Register tools here and they become available to the teaching agent.
+工具是 LLM 可以调用的 OpenAI 兼容函数定义。
+在此注册工具后，教学 agent 即可使用它们。
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ class ToolRegistry:
         parameters: dict[str, Any],
         require_confirmation: bool = False,
     ) -> Callable[[Handler], Handler]:
-        """Decorator to register a tool handler."""
+        """装饰器：注册工具处理函数。"""
 
         def decorator(handler: Handler) -> Handler:
             self._tools[name] = ToolDef(
@@ -46,7 +46,7 @@ class ToolRegistry:
         return decorator
 
     def get_tool_definitions(self) -> list[dict[str, Any]]:
-        """Return OpenAI-compatible tool definitions for enabled tools."""
+        """返回已启用工具的 OpenAI 兼容工具定义列表。"""
         return [
             {
                 "type": "function",
@@ -63,7 +63,7 @@ class ToolRegistry:
         return self._tools.get(name)
 
     def execute(self, name: str, **kwargs) -> str:
-        """Execute a tool by name and return its result."""
+        """按名称执行工具并返回其结果。"""
         tool = self.get_tool(name)
         if tool is None:
             return f"[ERROR] Unknown tool: {name}"
@@ -78,9 +78,9 @@ class ToolRegistry:
 
 
 def tool_result(data: dict | str = None, **kwargs) -> str:
-    """Standard tool success result. Accepts dict or keyword args. Returns JSON string.
+    """标准工具成功结果。接受字典或关键字参数，返回 JSON 字符串。
 
-    Usage:
+    用法：
         tool_result({"content": "...", "lines": 42})
         tool_result(success=True, count=10)
     """
@@ -93,9 +93,9 @@ def tool_result(data: dict | str = None, **kwargs) -> str:
 
 
 def tool_error(message: str, **extra) -> str:
-    """Standard tool error result. Returns JSON string with error key.
+    """标准工具错误结果。返回包含 error 键的 JSON 字符串。
 
-    Usage:
+    用法：
         tool_error("文件不存在: /path/to/file")
         tool_error("写入失败", code=403)
     """
@@ -103,6 +103,6 @@ def tool_error(message: str, **extra) -> str:
     return json.dumps({"error": message, **extra}, ensure_ascii=False)
 
 
-# Global tool registry
+# 全局工具注册表
 registry = ToolRegistry()
 register_tool = registry.register

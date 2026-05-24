@@ -1,5 +1,5 @@
-# ============================================================================
-# OpenTeacher Installer for Windows
+﻿# ============================================================================
+# Keenius Installer for Windows
 # ============================================================================
 # One-line install:
 #   powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
@@ -14,7 +14,7 @@ $outputEncoding = [Console]::OutputEncoding
 
 Write-Host ""
 Write-Host "===================================" -ForegroundColor Cyan
-Write-Host "  OpenTeacher Installer" -ForegroundColor Cyan
+Write-Host "  Keenius Installer" -ForegroundColor Cyan
 Write-Host "  CLI AI Teacher" -ForegroundColor Cyan
 Write-Host "===================================" -ForegroundColor Cyan
 Write-Host ""
@@ -44,7 +44,7 @@ $pythonVersion = & $pythonCmd --version 2>&1
 Write-Host "   OK  $pythonVersion" -ForegroundColor Green
 
 # -- Step 2: pip install ---------------------------------------------
-Write-Host "[2/3] Installing OpenTeacher..." -ForegroundColor Yellow
+Write-Host "[2/3] Installing Keenius..." -ForegroundColor Yellow
 
 $projectDir = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 if (-not $projectDir) {
@@ -57,7 +57,7 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-Write-Host "   OK  OpenTeacher installed" -ForegroundColor Green
+Write-Host "   OK  Keenius installed" -ForegroundColor Green
 
 # -- Step 3: Check PATH ----------------------------------------------
 Write-Host "[3/3] Checking PATH..." -ForegroundColor Yellow
@@ -83,10 +83,10 @@ Write-Host "  Install Complete!" -ForegroundColor Green
 Write-Host "===================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  Next steps:" -ForegroundColor Yellow
-Write-Host "    openteacher setup     Configure API Key" -ForegroundColor White
-Write-Host "    openteacher           Launch AI Teacher" -ForegroundColor White
+Write-Host "    Keenius setup     Configure API Key" -ForegroundColor White
+Write-Host "    Keenius           Launch AI Teacher" -ForegroundColor White
 Write-Host ""
-Write-Host "  Tip: If 'openteacher' is not found, close and reopen your terminal." -ForegroundColor DarkGray
+Write-Host "  Tip: If 'Keenius' is not found, close and reopen your terminal." -ForegroundColor DarkGray
 Write-Host ""
 
 [Console]::OutputEncoding = $outputEncoding

@@ -1,7 +1,7 @@
-"""Configuration management for OpenTeacher.
+﻿"""Keenius 配置管理。
 
-Reads from .env file and config.yaml. API keys go in .env,
-teaching preferences go in config.yaml.
+从 .env 文件和 config.yaml 读取配置。API 密钥放在 .env 中，
+教学偏好放在 config.yaml 中。
 """
 
 import os
@@ -9,22 +9,24 @@ from pathlib import Path
 from dotenv import load_dotenv
 import yaml
 
-CONFIG_DIR = Path.home() / ".openteacher"
+CONFIG_DIR = Path.home() / ".keenius"
 CONFIG_FILE = CONFIG_DIR / "config.yaml"
-DATA_DIR = CONFIG_DIR / "data"
-PROFILES_DIR = CONFIG_DIR / "profiles"
+SESSIONS_DIR = CONFIG_DIR / "sessions"
 PLANS_DIR = CONFIG_DIR / "plans"
+SKILLS_DIR = CONFIG_DIR / "skills"
+PROFILES_DIR = CONFIG_DIR / "profiles"
+HISTORY_FILE = CONFIG_DIR / "history.txt"
+NOTES_DIR = CONFIG_DIR / "notes"
+PROGRESS_FILE = CONFIG_DIR / "progress.json"
 
 
 def ensure_dirs() -> None:
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    PROFILES_DIR.mkdir(parents=True, exist_ok=True)
-    PLANS_DIR.mkdir(parents=True, exist_ok=True)
+    for d in (CONFIG_DIR, SESSIONS_DIR, PLANS_DIR, SKILLS_DIR, PROFILES_DIR, NOTES_DIR):
+        d.mkdir(parents=True, exist_ok=True)
 
 
 def load_env() -> None:
-    """Load .env from project root and ~/.openteacher/.env."""
+    """从项目根目录和 ~/.keenius/.env 加载 .env 文件。"""
     project_env = Path.cwd() / ".env"
     if project_env.exists():
         load_dotenv(project_env)
@@ -34,7 +36,7 @@ def load_env() -> None:
 
 
 def load_config() -> dict:
-    """Load config.yaml, returning defaults if it doesn't exist."""
+    """加载 config.yaml，如果不存在则返回默认值。"""
     ensure_dirs()
     if CONFIG_FILE.exists():
         return yaml.safe_load(CONFIG_FILE.read_text(encoding="utf-8")) or {}
@@ -58,7 +60,7 @@ DEFAULT_CONFIG = {
 
 
 def get_api_key() -> str:
-    """Get API key from env. Checks OPENAI_API_KEY, then ANTHROPIC_API_KEY."""
+    """从环境变量获取 API 密钥。依次检查 OPENAI_API_KEY、ANTHROPIC_API_KEY。"""
     for key in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY", "API_KEY"):
         val = os.getenv(key)
         if val:
@@ -82,7 +84,7 @@ def get_config_value(key: str, default=None):
 
 
 def set_env(key: str, value: str) -> None:
-    """Write a key=value pair to ~/.openteacher/.env, creating the file if needed."""
+    """将 key=value 键值对写入 ~/.keenius/.env，如文件不存在则创建。"""
     ensure_dirs()
     env_file = CONFIG_DIR / ".env"
 
@@ -97,7 +99,7 @@ def set_env(key: str, value: str) -> None:
             if not found:
                 new_lines.append(f"{key}={value}")
                 found = True
-            # skip old duplicates
+            # 跳过旧的重复行
         else:
             new_lines.append(line)
 
@@ -109,7 +111,7 @@ def set_env(key: str, value: str) -> None:
 
 
 def set_config_value(key: str, value) -> None:
-    """Write a single key: value to config.yaml, preserving existing keys."""
+    """将单个 key: value 写入 config.yaml，保留已有配置项。"""
     cfg = load_config()
     cfg[key] = value
     save_config(cfg)

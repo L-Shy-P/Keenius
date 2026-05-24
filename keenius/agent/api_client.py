@@ -1,8 +1,8 @@
-"""LLM API client for OpenTeacher."""
+﻿"""Keenius 的 LLM API 客户端。"""
 
 from __future__ import annotations
 from openai import OpenAI
-from openteacher import config
+from keenius import config
 
 
 def create_client() -> OpenAI:

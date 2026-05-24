@@ -1,25 +1,25 @@
-# OpenTeacher 架构文档
+﻿# Keenius 架构文档
 
 ## 概述
 
-OpenTeacher 是一个 CLI AI 导师，帮助自学者高效、扎实地掌握任何学科。
+Keenius 是一个 CLI AI 导师，帮助自学者高效、扎实地掌握任何学科。
 对标 Claude Code / Hermes Agent 的交互模式，但专注于教学场景。
 
 ## 项目结构
 
 ```
-OpenTeacher/
+Keenius/
 ├── ARCHITECTURE.md               ← 你正在读的文件
 ├── pyproject.toml                ← 项目元数据 & 依赖 & console_scripts 入口
 ├── .env.example                  ← API Key 配置模板（用户复制为 .env）
 ├── .gitignore
 │
 ├── config/
-│   └── config.yaml.example       ← 教学设置模板（复制到 ~/.openteacher/config.yaml）
+│   └── config.yaml.example       ← 教学设置模板（复制到 ~/.keenius/config.yaml）
 │
-├── openteacher/                  ← 主包
+├── Keenius/                  ← 主包
 │   ├── __init__.py               ← 版本号
-│   ├── __main__.py               ← `python -m openteacher` 入口 → cli.main
+│   ├── __main__.py               ← `python -m Keenius` 入口 → cli.main
 │   ├── config.py                 ← 配置管理（.env + YAML + 目录结构）
 │   │
 │   ├── cli/                      ← CLI 层
@@ -100,13 +100,13 @@ OpenTeacher/
 | 优先级 | 位置 | 内容 |
 |--------|------|------|
 | 低 | `config.py::DEFAULT_CONFIG` | 硬编码默认值 |
-| 中 | `~/.openteacher/config.yaml` | 教学设置（模型/语言/风格） |
-| 高 | `~/.openteacher/.env` | API Key / Base URL |
+| 中 | `~/.keenius/config.yaml` | 教学设置（模型/语言/风格） |
+| 高 | `~/.keenius/.env` | API Key / Base URL |
 
 ## 运行时数据目录
 
 ```
-~/.openteacher/
+~/.keenius/
 ├── .env                          ← API Key（/setup 写入）
 ├── config.yaml                   ← 教学设置
 ├── profiles/
@@ -129,7 +129,7 @@ OpenTeacher/
 
 ```python
 # 在 builtin.py 中
-from openteacher.tools.registry import register_tool
+from keenius.tools.registry import register_tool
 
 @register_tool(
     name="my_tool",
@@ -174,20 +174,20 @@ def my_tool(arg1: str) -> str:
 2. 首次对话通过自然提问评估
 3. 教学过程中持续更新
 4. `/profile` 命令可查看当前画像
-5. 数据持久化在 `~/.openteacher/profiles/default.json`
+5. 数据持久化在 `~/.keenius/profiles/default.json`
 
 ## 修改指南
 
 | 你要改什么 | 改哪个文件 |
 |------------|-----------|
-| Agent 人格 / 教学策略 | `openteacher/tutor/prompts.py` |
-| 添加教学工具 | `openteacher/tools/builtin.py` |
-| 修改 REPL 命令 | `openteacher/cli/shell.py`（SLASH_COMMANDS 字典） |
-| 修改终端样式 | `openteacher/agent/display.py` |
-| 修改快捷键 | `openteacher/cli/shell.py`（bindings） |
-| 修改配置项 | `openteacher/config.py`（DEFAULT_CONFIG 字典） |
-| 修改 API 调用逻辑 | `openteacher/agent/api_client.py` |
-| 修改会话存储格式 | `openteacher/agent/loop.py`（to_dict/from_dict） |
+| Agent 人格 / 教学策略 | `Keenius/tutor/prompts.py` |
+| 添加教学工具 | `Keenius/tools/builtin.py` |
+| 修改 REPL 命令 | `Keenius/cli/shell.py`（SLASH_COMMANDS 字典） |
+| 修改终端样式 | `Keenius/agent/display.py` |
+| 修改快捷键 | `Keenius/cli/shell.py`（bindings） |
+| 修改配置项 | `Keenius/config.py`（DEFAULT_CONFIG 字典） |
+| 修改 API 调用逻辑 | `Keenius/agent/api_client.py` |
+| 修改会话存储格式 | `Keenius/agent/loop.py`（to_dict/from_dict） |
 
 ## 安装与使用
 
@@ -196,10 +196,10 @@ def my_tool(arg1: str) -> str:
 pip install -e .
 
 # 启动
-openteacher                  # 默认
-openteacher -s 机器学习       # 指定主题
-openteacher -l en            # 英文教学
-openteacher -m deepseek-chat # 指定模型
+Keenius                  # 默认
+Keenius -s 机器学习       # 指定主题
+Keenius -l en            # 英文教学
+Keenius -m deepseek-chat # 指定模型
 
 # REPL 内命令
 /setup     配置 API

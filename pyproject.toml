@@ -1,6 +1,6 @@
 [project]
-name = "openteacher"
-version = "0.1.0"
+name = "keenius"
+version = "0.2.0"
 description = "CLI AI Teacher for efficient self-learning"
 requires-python = ">=3.10"
 dependencies = [
@@ -13,13 +13,13 @@ dependencies = [
 ]
 
 [project.scripts]
-openteacher = "openteacher.__main__:main"
+keenius = "keenius.__main__:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0.0", "ruff>=0.4.0"]
 
 [tool.setuptools.packages.find]
-include = ["openteacher*"]
+include = ["keenius*"]
 
 [tool.ruff]
 line-length = 100

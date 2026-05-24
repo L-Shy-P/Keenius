@@ -1,5 +1,5 @@
-# OpenTeacher configuration template
-# Copy this to ~/.openteacher/config.yaml and customize
+﻿# Keenius configuration template
+# Copy this to ~/.keenius/config.yaml and customize
 
 model: gpt-4o                  # LLM model name
 api_base: https://api.openai.com/v1  # API endpoint (supports OpenAI-compatible APIs)

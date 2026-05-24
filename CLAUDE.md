@@ -1,4 +1,4 @@
-# OpenTeacher CLI Standards
+﻿# Keenius CLI Standards
 
 ## 强制规则
 
@@ -13,7 +13,7 @@
 - 成功用 `tool_result(data)` 返回 JSON
 - 失败用 `tool_error(message)` 返回 JSON `{"error": "..."}`
 - 文件读: `read_file(file_path, offset, limit)` — 带行号的 cat -n 格式
-- 文件写: `write_file(file_path, content)` — 安全限制到 ~/.openteacher/ 和项目目录
+- 文件写: `write_file(file_path, content)` — 安全限制到 ~/.keenius/ 和项目目录
 - 命令行: `SLASH_COMMANDS` 按 category 分组的 dict，包含 desc 和 action
 
 ### 交互标准
@@ -31,7 +31,7 @@
 - 每课结构：定义原文 + 直观解释 + 方法典例 + 当堂测试 + 拓展内容
 
 ### 项目结构
-- 包名 openteacher，命令 openteacher
-- 配置 ~/.openteacher/，计划 ~/.openteacher/plans/，画像 ~/.openteacher/profiles/
+- 包名 Keenius，命令 Keenius
+- 配置 ~/.keenius/，计划 ~/.keenius/plans/，画像 ~/.keenius/profiles/
 - 核心文件: tutor/prompts.py（提示词）、cli/shell.py（REPL）、agent/loop.py（对话循环）
 - 工具: tools/builtin.py（教学工具）、tools/registry.py（注册系统）

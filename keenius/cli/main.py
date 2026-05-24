@@ -1,7 +1,7 @@
-"""CLI entry point for OpenTeacher.
+﻿"""Keenius CLI 入口点。
 
-On startup, scans for existing sessions in the project directory.
-If sessions exist, shows a picker. Supports auto-loading pinned sessions.
+启动时扫描项目目录中已有的会话。
+如果存在会话，显示选择器。支持自动加载固定会话。
 """
 
 from __future__ import annotations
@@ -10,8 +10,8 @@ import argparse
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="openteacher",
-        description="OpenTeacher — CLI AI 智能老师",
+        prog="Keenius",
+        description="Keenius — CLI AI 智能老师",
     )
     parser.add_argument("--subject", "-s", default="", help="学习主题")
     parser.add_argument("--language", "-l", default="zh", choices=["zh", "en"], help="教学语言")
@@ -22,27 +22,27 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
-    from openteacher.config import load_env
+    from keenius.config import load_env
 
     load_env()
 
     parser = build_parser()
     args = parser.parse_args()
 
-    # ── Session selection on startup ──────────────────────────────────
+    # ── 启动时选择会话 ──────────────────────────────────
     if not args.no_picker:
-        from openteacher.agent.sessions import scan_sessions, get_auto_load_session, load_session_by_name
+        from keenius.agent.sessions import scan_sessions, get_auto_load_session, load_session_by_name
 
         sessions = scan_sessions()
         auto_name, auto_source = get_auto_load_session()
 
         if auto_name and auto_source:
-            # Auto-load pinned session
+            # 自动加载已固定的会话
             data = load_session_by_name(auto_name, auto_source)
             if data:
                 _start_with_session(data)
                 return
-            # If pinned session no longer exists, clear pin silently
+            # 如果固定的会话已不存在，静默清除
 
         if sessions:
             choice = _show_session_picker(sessions)
@@ -50,17 +50,17 @@ def main() -> None:
                 _warn_multiple_sessions(sessions)
                 _start_fresh(args)
             elif choice is not None:
-                from openteacher.agent.sessions import load_session_by_name
+                from keenius.agent.sessions import load_session_by_name
                 data = load_session_by_name(choice["name"], choice["source"])
                 if data:
                     _start_with_session(data)
                     return
-    # Fall through to fresh start
+    # 回退到新会话
     _start_fresh(args)
 
 
 def _start_fresh(args) -> None:
-    from openteacher.cli.shell import run_shell
+    from keenius.cli.shell import run_shell
     run_shell(
         subject=args.subject,
         language=args.language,
@@ -70,15 +70,15 @@ def _start_fresh(args) -> None:
 
 
 def _start_with_session(data: dict) -> None:
-    from openteacher.cli.shell import run_shell_with_session
+    from keenius.cli.shell import run_shell_with_session
     run_shell_with_session(data)
 
 
 def _warn_multiple_sessions(sessions: list[dict]) -> None:
-    """Warn if multiple sessions exist in this directory."""
+    """如果当前目录存在多个会话，发出警告。"""
     project_sessions = [s for s in sessions if s["source"] == "project"]
     if len(project_sessions) >= 2:
-        from openteacher.agent.display import console
+        from keenius.agent.display import console
         console.print()
         console.print("[yellow]⚠  不建议在同一文件夹下建立多个聊天记录[/yellow]")
         console.print("[dim]考虑使用 /save <名称> 来区分不同主题，而非多开新会话[/dim]")
@@ -86,9 +86,9 @@ def _warn_multiple_sessions(sessions: list[dict]) -> None:
 
 
 def _show_session_picker(sessions: list[dict]) -> dict | str | None:
-    """Show interactive session picker with logo and welcome."""
-    from openteacher.agent.display import print_logo, print_welcome
-    from openteacher.cli.shell import session_picker
+    """显示交互式会话选择器，包含 logo 和欢迎信息。"""
+    from keenius.agent.display import print_logo, print_welcome
+    from keenius.cli.shell import session_picker
     print_logo()
     print_welcome()
     return session_picker(sessions)

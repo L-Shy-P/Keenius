@@ -1,14 +1,27 @@
-"""Built-in teaching tools for the OpenTeacher agent.
+﻿"""Keenius agent 的内置教学工具。
 
-All tool descriptions are in Chinese since the primary teaching language is Chinese.
-Tools are registered via the @register_tool decorator — just importing this module
-is enough to make them available to the agent.
+所有工具描述均为中文，因为主要教学语言是中文。
+工具通过 @register_tool 装饰器注册 —— 只需导入此模块即可让 agent 使用它们。
 """
 
-from openteacher.tools.registry import register_tool, tool_result, tool_error
+from keenius.tools.registry import register_tool, tool_result, tool_error
+
+# ═══════════════════════════════════════════════════════════════════════
+# 辅助
+# ═══════════════════════════════════════════════════════════════════════
+
+
+def _is_under_dir(p, d):
+    """检查路径 p 是否在目录 d 下（安全：使用 Path.is_relative_to）。"""
+    try:
+        p.relative_to(d)
+        return True
+    except ValueError:
+        return False
+
 
 # ============================================================
-# Standard file I/O tools (Claude Code / Hermes compatible format)
+# 标准文件 I/O 工具（Claude Code / Hermes 兼容格式）
 # ============================================================
 
 
@@ -63,7 +76,7 @@ def read_file(file_path: str, offset: int = 1, limit: int = 500) -> str:
     end = min(start + limit, total)
     selected = lines[start:end]
 
-    # Line-numbered output (matching Claude Code `cat -n` format)
+    # 带行号的输出（匹配 Claude Code `cat -n` 格式）
     numbered = "\n".join(f"{start + i + 1:6d}\t{line}" for i, line in enumerate(selected))
 
     result = {
@@ -82,7 +95,7 @@ def read_file(file_path: str, offset: int = 1, limit: int = 500) -> str:
     name="write_file",
     description=(
         "将内容写入文件。会完全覆盖已有内容。"
-        "只能写入 ~/.openteacher/ 目录或当前项目目录下的文件。"
+        "只能写入 ~/.keenius/ 目录或当前项目目录下的文件。"
         "不会自动创建父目录——如需创建目录请先用 Bash 工具。"
     ),
     parameters={
@@ -105,12 +118,12 @@ def write_file(file_path: str, content: str) -> str:
 
     p = Path(file_path).expanduser().resolve()
     allowed_dirs = [
-        Path.home() / ".openteacher",
+        Path.home() / ".keenius",
         Path.cwd(),
     ]
-    if not any(str(p).startswith(str(d)) for d in allowed_dirs):
+    if not any(_is_under_dir(p, d) for d in allowed_dirs):
         return tool_error(
-            f"安全限制：只能写入 ~/.openteacher/ 或当前项目目录下的文件。\n"
+            f"安全限制：只能写入 ~/.keenius/ 或当前项目目录下的文件。\n"
             f"目标路径: {file_path}"
         )
 
@@ -132,7 +145,7 @@ def write_file(file_path: str, content: str) -> str:
 
 
 # ============================================================
-# Quiz & Assessment tools
+# 测验与评估工具
 # ============================================================
 
 
@@ -158,7 +171,7 @@ def write_file(file_path: str, content: str) -> str:
         "required": ["topic"],
     },
 )
-def create_quiz(topic: str, question_count: int = 3, difficulty: str = "medium") -> str:
+def create_quiz(topic: str, question_count: int = 3, difficulty: str = "medium", **_) -> str:
     return (
         f"📝 **生成测验**: {topic}\n"
         f"难度: {difficulty} | 题目数量: {question_count}\n"
@@ -179,7 +192,7 @@ def create_quiz(topic: str, question_count: int = 3, difficulty: str = "medium")
         "required": ["question", "student_answer", "correct_answer"],
     },
 )
-def check_answer(question: str, student_answer: str, correct_answer: str) -> str:
+def check_answer(question: str, student_answer: str, correct_answer: str, **_) -> str:
     return (
         "🔍 **批改请求**\n"
         f"问题: {question}\n"
@@ -190,7 +203,7 @@ def check_answer(question: str, student_answer: str, correct_answer: str) -> str
 
 
 # ============================================================
-# Explanation & Examples
+# 讲解与示例
 # ============================================================
 
 
@@ -211,7 +224,7 @@ def check_answer(question: str, student_answer: str, correct_answer: str) -> str
         "required": ["concept"],
     },
 )
-def give_examples(concept: str, example_type: str = "code") -> str:
+def give_examples(concept: str, example_type: str = "code", **_) -> str:
     type_names = {"real_world": "真实场景", "code": "代码示例", "analogy": "类比"}
     type_name = type_names.get(example_type, example_type)
     return (
@@ -238,7 +251,7 @@ def give_examples(concept: str, example_type: str = "code") -> str:
         "required": ["concept"],
     },
 )
-def explain_deeper(concept: str, depth: str = "mechanism") -> str:
+def explain_deeper(concept: str, depth: str = "mechanism", **_) -> str:
     depth_names = {
         "foundation": "基础原理",
         "mechanism": "工作机制",
@@ -252,7 +265,7 @@ def explain_deeper(concept: str, depth: str = "mechanism") -> str:
 
 
 # ============================================================
-# Review & Summarization
+# 复习与总结
 # ============================================================
 
 
@@ -273,7 +286,7 @@ def explain_deeper(concept: str, depth: str = "mechanism") -> str:
         "required": ["topic"],
     },
 )
-def summarize_lesson(topic: str, format: str = "bullets") -> str:
+def summarize_lesson(topic: str, format: str = "bullets", **_) -> str:
     format_names = {"outline": "大纲", "mindmap": "思维导图", "bullets": "要点列表"}
     return (
         f"📋 **总结请求**: {topic}\n"
@@ -298,7 +311,7 @@ def summarize_lesson(topic: str, format: str = "bullets") -> str:
         "required": ["concept"],
     },
 )
-def spaced_review_reminder(concept: str, days_since_learned: int = 1) -> str:
+def spaced_review_reminder(concept: str, days_since_learned: int = 1, **_) -> str:
     return (
         f"⏰ **复习提醒**: {concept}\n"
         f"距上次学习: {days_since_learned} 天\n"
@@ -307,7 +320,7 @@ def spaced_review_reminder(concept: str, days_since_learned: int = 1) -> str:
 
 
 # ============================================================
-# Student profiling
+# 学生画像
 # ============================================================
 
 
@@ -381,7 +394,7 @@ def assess_student(
 
 
 # ============================================================
-# Progress tracking
+# 进度追踪
 # ============================================================
 
 
@@ -427,10 +440,10 @@ def track_progress(concept: str, status: str, notes: str = "") -> str:
         "required": ["title", "content"],
     },
 )
-def save_note(title: str, content: str, tags: list[str] | None = None) -> str:
+def save_note(title: str, content: str, tags: list[str] | None = None, **_) -> str:
     import json, datetime
-    from openteacher.config import DATA_DIR
-    notes_dir = DATA_DIR / "notes"
+    from keenius.config import NOTES_DIR
+    notes_dir = NOTES_DIR
     notes_dir.mkdir(parents=True, exist_ok=True)
     safe_name = title.strip().replace(" ", "-")[:60]
     note_file = notes_dir / f"{safe_name}.json"
@@ -445,16 +458,15 @@ def save_note(title: str, content: str, tags: list[str] | None = None) -> str:
 
 
 # ============================================================
-# Learning plan tools
+# 学习计划工具
 # ============================================================
 
 
 @register_tool(
     name="manage_plan",
     description=(
-        "管理学习计划。可以创建新计划、添加课程、更新课程状态。"
-        "action: create(创建空计划) / add_lesson(添加一堂课) / "
-        "complete_lesson(标记课程完成并记录画像变化)"
+        "管理学习计划。action: create(创建空计划) / add_lesson(添加课程到指定章节单元) / "
+        "complete_lesson(标记课程完成)。add_lesson 时必须提供 section 和 unit 来组织课程层级。"
     ),
     parameters={
         "type": "object",
@@ -468,67 +480,193 @@ def save_note(title: str, content: str, tags: list[str] | None = None) -> str:
                 "type": "string",
                 "description": "课程标题（add_lesson 时必填）",
             },
+            "section": {
+                "type": "string",
+                "description": "章节名称，如 '01-基础概念'。add_lesson 时必填，课程按此分组",
+            },
+            "unit": {
+                "type": "string",
+                "description": "单元名称，如 '01-变量与类型'。add_lesson 时必填，同一单元的课放一起",
+            },
             "lesson_id": {
                 "type": "integer",
                 "description": "课程编号（complete_lesson 时必填）",
             },
             "profile_changes": {
                 "type": "string",
-                "description": "完成课程后观察到的学生画像变化（JSON 格式或自由文本描述）",
+                "description": "完成课程后观察到的学生画像变化",
             },
         },
         "required": ["action"],
     },
 )
 def manage_plan(
-    action: str, title: str = "", lesson_id: int = 0, profile_changes: str = ""
+    action: str, title: str = "", lesson_id: int = 0, profile_changes: str = "",
+    section: str = "", unit: str = "",
 ) -> str:
-    from openteacher.tutor.planner import (
-        create_plan, add_lesson, mark_lesson_complete, load_plan, plan_path,
+    from keenius.tutor.planner import (
+        create_plan, add_lesson, mark_lesson_complete,
+        ensure_subject, list_subjects, subject_dir,
     )
-    # Get subject from the current session context — we use a simple approach
-    # The subject is inferred from the plan file name
-    subject = title if action == "create" and title else ""
+    subjects = list_subjects()
+    subject = subjects[0] if subjects else (title if action == "create" and title else "general")
 
     if action == "create":
-        plan = create_plan(subject or "general")
-        return f"📋 学习计划已创建: {subject or 'general'}\n存储位置: {plan_path(subject or 'general')}"
+        ensure_subject(subject)
+        return f"📋 学习计划已创建: {subject}\n存储位置: {subject_dir(subject)}"
 
     elif action == "add_lesson":
         if not title:
             return "请提供课程标题。"
-        # Find the active plan by listing plan files
-        from openteacher.config import PLANS_DIR
-        import json
-        plan_files = list(PLANS_DIR.glob("*.json"))
-        if not plan_files:
-            return "未找到学习计划。请先用 action=create 创建。"
-        latest_plan = max(plan_files, key=lambda p: p.stat().st_mtime)
-        plan = json.loads(latest_plan.read_text(encoding="utf-8"))
-        subject = plan["subject"]
-        lesson = add_lesson(subject, title)
-        return f"📝 已添加第 {lesson['id']} 课: {title}\n计划: {subject}"
+        if not subjects:
+            return "请先用 action=create 创建学习计划。"
+        sec = section or "默认章节"
+        unt = unit or "默认单元"
+        lesson_path = add_lesson(subject, sec, unt, title)
+        return f"📝 已添加课程: {title}\n章节: {sec} → {unt}\n文件: {lesson_path}"
 
     elif action == "complete_lesson":
         if not lesson_id:
             return "请提供课程编号。"
-        from openteacher.config import PLANS_DIR
-        import json
-        plan_files = list(PLANS_DIR.glob("*.json"))
-        if not plan_files:
+        if not subjects:
             return "未找到学习计划。"
-        latest_plan = max(plan_files, key=lambda p: p.stat().st_mtime)
-        plan = json.loads(latest_plan.read_text(encoding="utf-8"))
-        subject = plan["subject"]
-        changes = {}
-        if profile_changes:
-            changes["notes"] = profile_changes
-        result = mark_lesson_complete(subject, lesson_id, changes)
+        result = mark_lesson_complete(subject, lesson_id)
         if result:
-            return f"✅ 第 {lesson_id} 课已完成: {result['title']}"
+            return f"✅ 第 {lesson_id} 课已完成: {result.get('title', '')}"
         return f"未找到第 {lesson_id} 课。"
 
     return "未知操作。"
+
+
+@register_tool(
+    name="write_lesson_content",
+    description=(
+        "写入或更新一堂课的详细教学内容。用 subject+title 定位课程文件。"
+        "section 指定要更新的部分：definition(定义原文+直观解释)、"
+        "examples(方法典例)、quiz(当堂测试)、extension(拓展内容)。"
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "subject": {"type": "string", "description": "学科名，如 'python'"},
+            "lesson_title": {"type": "string", "description": "课程标题（.md 文件名不含编号），如 '什么是变量'"},
+            "section": {
+                "type": "string",
+                "enum": ["definition", "examples", "quiz", "extension"],
+                "description": "课程部分",
+            },
+            "content": {"type": "string", "description": "该部分的完整内容（Markdown 格式）"},
+        },
+        "required": ["subject", "lesson_title", "section", "content"],
+    },
+)
+def write_lesson_content(
+    subject: str, lesson_title: str, section: str, content: str, intuitive_explanation: str = ""
+) -> str:
+    from keenius.tutor.planner import subject_dir, read_lesson, write_lesson
+    base = subject_dir(subject)
+    if not base.exists():
+        return f"未找到学科 '{subject}' 的计划。请先用 generate_curriculum 创建。"
+
+    # 查找匹配标题的 .md 文件
+    for md_file in base.rglob("*.md"):
+        if md_file.parent.name == "test":
+            continue
+        meta, body = read_lesson(md_file)
+        if meta.get("title") == lesson_title or lesson_title in md_file.stem:
+            # 更新 markdown 正文中的对应部分
+            heading_map = {
+                "definition": "## 定义原文",
+                "examples": "## 方法典例",
+                "quiz": "## 当堂测试",
+                "extension": "## 拓展内容",
+            }
+            heading = heading_map.get(section, f"## {section}")
+            # 替换标题下的内容
+            new_body = _replace_section(body, heading, content)
+            write_lesson(md_file, meta, new_body)
+            return f"✓ 已更新课程 '{meta.get('title', lesson_title)}' 的 {section} 部分"
+
+    return f"未找到课程 '{lesson_title}'。请确认标题正确。"
+
+
+def _replace_section(body: str, heading: str, new_content: str) -> str:
+    """替换 markdown 正文中 ## 标题下的内容。"""
+    import re
+    pattern = re.compile(rf"^{re.escape(heading)}\s*\n.*?(?=^## |\Z)", re.DOTALL | re.MULTILINE)
+    replacement = f"{heading}\n\n{new_content}\n"
+    if pattern.search(body):
+        return pattern.sub(replacement, body)
+    else:
+        return body + f"\n\n{heading}\n\n{new_content}\n"
+
+
+@register_tool(
+    name="generate_curriculum",
+    description=(
+        "生成课程大纲。按章节→单元→课程的三层结构组织。"
+        "每个 section 包含多个 unit，每个 unit 包含多个 lesson。"
+        "section.title 如 '01-基础概念'，unit.title 如 '01-变量与类型'，"
+        "lesson.title 如 '什么是变量'。一门学科 2-5 个 section，20-50 课。"
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "sections": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string", "description": "章节标题，如 '01-基础概念'"},
+                        "units": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "title": {"type": "string", "description": "单元标题，如 '01-变量与类型'"},
+                                    "lessons": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "properties": {
+                                                "title": {"type": "string", "description": "课程标题"},
+                                                "description": {"type": "string", "description": "一句话描述本课内容"},
+                                            },
+                                            "required": ["title", "description"],
+                                        },
+                                    },
+                                },
+                                "required": ["title", "lessons"],
+                            },
+                        },
+                    },
+                    "required": ["title", "units"],
+                },
+            },
+        },
+        "required": ["sections"],
+    },
+)
+def generate_curriculum(sections: list[dict]) -> str:
+    from keenius.tutor.planner import ensure_subject, add_lesson, list_subjects
+
+    subjects = list_subjects()
+    subject = subjects[0] if subjects else "general"
+    ensure_subject(subject)
+
+    total = 0
+    for sec in sections:
+        sec_title = sec.get("title", "默认章节")
+        for unit in sec.get("units", []):
+            unit_title = unit.get("title", "默认单元")
+            for lesson in unit.get("lessons", []):
+                title = lesson.get("title", f"第{total+1}课")
+                desc = lesson.get("description", "")
+                content = f"# {title}\n\n## 定义原文\n\n## 直观解释\n\n## 方法典例\n\n## 当堂测试\n\n## 拓展内容\n\n{desc}"
+                add_lesson(subject, sec_title, unit_title, title, content)
+                total += 1
+
+    return f"📋 课程大纲已生成: {total} 节课，{len(sections)} 个章节"
 
 
 @register_tool(
@@ -536,132 +674,90 @@ def manage_plan(
     description="展示当前学习计划概览，包括所有课程及完成状态。",
     parameters={"type": "object", "properties": {}, "required": []},
 )
-@register_tool(
-    name="write_lesson_content",
-    description=(
-        "写入或更新一堂课的详细教学内容。lesson_id 指定课程编号，"
-        "section 指定要更新的部分：definition(定义原文+直观解释)、"
-        "examples(方法典例)、quiz(当堂测试)、extension(拓展内容)。"
-        "content 是自由格式文本，Agent 应写入完整的课程内容。"
-    ),
-    parameters={
-        "type": "object",
-        "properties": {
-            "lesson_id": {"type": "integer", "description": "课程编号"},
-            "section": {
-                "type": "string",
-                "enum": ["definition", "examples", "quiz", "extension"],
-                "description": "课程部分",
-            },
-            "content": {"type": "string", "description": "该部分的完整内容（Markdown 格式）"},
-            "intuitive_explanation": {
-                "type": "string",
-                "description": "直观解释版本（仅 definition 部分需要）",
-            },
-        },
-        "required": ["lesson_id", "section", "content"],
-    },
-)
-def write_lesson_content(
-    lesson_id: int, section: str, content: str, intuitive_explanation: str = ""
-) -> str:
-    from openteacher.config import PLANS_DIR
-    import json, datetime
-
-    plan_files = list(PLANS_DIR.glob("*.json"))
-    if not plan_files:
-        return "未找到学习计划。请先用 manage_plan 创建。"
-    latest_plan = max(plan_files, key=lambda p: p.stat().st_mtime)
-    plan = json.loads(latest_plan.read_text(encoding="utf-8"))
-
-    for lesson in plan["lessons"]:
-        if lesson["id"] == lesson_id:
-            if section == "definition":
-                lesson["sections"]["definition"]["original"] = content
-                if intuitive_explanation:
-                    lesson["sections"]["definition"]["intuitive"] = intuitive_explanation
-            elif section == "examples":
-                lesson["sections"]["examples"].append({
-                    "content": content, "added_at": datetime.datetime.now().isoformat(),
-                })
-            elif section == "quiz":
-                lesson["sections"]["quiz"].append({
-                    "content": content, "added_at": datetime.datetime.now().isoformat(),
-                })
-            elif section == "extension":
-                lesson["sections"]["extension"] = content
-
-            plan["updated_at"] = datetime.datetime.now().isoformat()
-            from openteacher.tutor.planner import save_plan
-            save_plan(plan["subject"], plan)
-
-            sections_cn = {"definition": "定义与解释", "examples": "方法典例",
-                          "quiz": "当堂测试", "extension": "拓展内容"}
-            return f"📝 第 {lesson_id} 课「{lesson['title']}」的 {sections_cn.get(section, section)} 已写入"
-
-    return f"未找到第 {lesson_id} 课。"
-
-
-@register_tool(
-    name="generate_curriculum",
-    description=(
-        "生成课程大纲写入计划文件。每课一个具体知识点，一门学科20-50课。"
-        "title=课程名(如 '函数参数类型')，description=一句话描述。调用后覆盖已有。"
-    ),
-    parameters={
-        "type": "object",
-        "properties": {
-            "lessons": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "title": {"type": "string", "description": "课程标题"},
-                        "description": {"type": "string", "description": "一句话描述本课内容"},
-                    },
-                    "required": ["title", "description"],
-                },
-                "description": "课程列表，按教学顺序排列",
-            },
-        },
-        "required": ["lessons"],
-    },
-)
-def generate_curriculum(lessons: list[dict]) -> str:
-    import json, datetime
-    from openteacher.config import PLANS_DIR
-    from openteacher.tutor.planner import create_plan, add_lesson, save_plan
-
-    PLANS_DIR.mkdir(parents=True, exist_ok=True)
-    plan_files = list(PLANS_DIR.glob("*.json"))
-    if plan_files:
-        latest = max(plan_files, key=lambda p: p.stat().st_mtime)
-        plan = json.loads(latest.read_text(encoding="utf-8"))
-    else:
-        plan = create_plan("general")
-
-    plan["lessons"] = []
-    for i, lesson in enumerate(lessons):
-        plan["lessons"].append({
-            "id": i + 1,
-            "title": lesson["title"],
-            "description": lesson.get("description", ""),
-            "status": "pending",
-            "skipped": False,
-            "created_at": datetime.datetime.now().isoformat(),
-        })
-
-    save_plan(plan["subject"], plan)
-    return f"📋 课程大纲已生成: {len(lessons)} 节课"
-
-
 def plan_summary_tool() -> str:
-    from openteacher.config import PLANS_DIR
-    import json
-    files = list(PLANS_DIR.glob("*.json"))
-    if not files:
+    from keenius.tutor.planner import list_subjects, plan_summary
+    subjects = list_subjects()
+    if not subjects:
         return "尚无学习计划。用 manage_plan(action='create') 创建。"
-    latest = max(files, key=lambda p: p.stat().st_mtime)
-    plan = json.loads(latest.read_text(encoding="utf-8"))
-    from openteacher.tutor.planner import plan_summary
-    return plan_summary(plan["subject"])
+    return plan_summary(subjects[0])
+
+
+@register_tool(
+    name="ask_fill_blank",
+    description=(
+        "创建填空题。question=题目文字，用 ___ 标记空位。"
+        "学生会直接在空上填写答案，按 Tab 在空之间切换。"
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "question": {"type": "string", "description": "题目文字，用 ___ 标记空位"},
+            "hint": {"type": "string", "description": "可选的提示文字"},
+        },
+        "required": ["question"],
+    },
+)
+def ask_fill_blank(question: str, hint: str = "", **_) -> str:
+    # 以选项格式返回，使选择器激活并在行内填空
+    return (
+        f"请填空（直接在空上输入，Tab 切换空位）：\n"
+        f"\n[1] {question}\n"
+        f"\n选 [1] 后直接在 ___ 上打字填充。"
+    )
+
+
+@register_tool(
+    name="show_curriculum",
+    description=(
+        "展示课程大纲的指定部分。可指定 section（章节名）和 unit（单元名），"
+        "不指定则显示全部。用于让学生了解当前学习进度和课程结构。"
+        "返回结构化的课程列表文本。"
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "subject": {"type": "string", "description": "学科名，如 'python'"},
+            "section": {"type": "string", "description": "要展示的章节名，如 '01-基础概念'。不填则显示全部"},
+            "unit": {"type": "string", "description": "要展示的单元名，如 '01-变量与类型'。不填则显示该章节下所有单元"},
+        },
+        "required": [],
+    },
+)
+def show_curriculum(subject: str = "", section: str = "", unit: str = "") -> str:
+    from keenius.tutor.planner import list_subjects, scan_tree
+    subjects = list_subjects()
+    if not subjects:
+        return "尚无学习计划。"
+
+    subj = subject or subjects[0]
+    tree = scan_tree(subj)
+    if not tree:
+        return f"学科 '{subj}' 暂无课程内容。"
+
+    lines = [f"📋 教学大纲：{subj}\n"]
+    for sec in tree:
+        if section and sec.get("title", "") != section:
+            continue
+        done = sum(1 for u in sec.get("children", []) for l in u.get("children", [])
+                   if l.get("status") == "completed")
+        total = sum(1 for u in sec.get("children", []) for l in u.get("children", [])
+                    if l.get("type") == "lesson")
+        lines.append(f"📁 {sec['title']}  [{done}/{total}]")
+        for unode in sec.get("children", []):
+            if unode.get("type") == "test":
+                lines.append(f"  🧪 {unode['title']}")
+                continue
+            if unit and unode.get("title", "") != unit:
+                continue
+            u_done = sum(1 for l in unode.get("children", []) if l.get("status") == "completed")
+            u_total = sum(1 for l in unode.get("children", []) if l.get("type") == "lesson")
+            lines.append(f"  📂 {unode['title']}  [{u_done}/{u_total}]")
+            for lnode in unode.get("children", []):
+                if lnode.get("type") == "test":
+                    lines.append(f"    🧪 {lnode['title']}")
+                    continue
+                icon = lnode.get("icon", "⏳")
+                title = lnode.get("title", "")
+                lines.append(f"    {icon} {title}")
+    lines.append(f"\n提示：学生可输入 /plan 查看交互式大纲。")
+    return "\n".join(lines)

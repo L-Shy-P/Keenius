@@ -1,7 +1,7 @@
-"""Tests for the tool registry and built-in tools."""
+﻿"""工具注册表和内置工具的测试。"""
 
 import pytest
-from openteacher.tools.registry import registry, ToolDef
+from keenius.tools.registry import registry, ToolDef
 
 
 def test_registry_has_tools():
