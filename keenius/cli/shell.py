@@ -29,6 +29,32 @@ def _plain(text: str) -> str:
     return re.sub(r"\[/?\w+\]|\[/?\w+ [^\]]*\]", "", text)
 
 
+def _md_to_rich(text: str) -> str:
+    """将 LLM 输出的 Markdown 内联格式 + LaTeX 数学转换为 Rich 标记。
+
+    处理顺序：先转义已有 [、再着色数学公式、再转换 Markdown。
+    """
+    # 1. 转义原文本中的 [ 防止被误解析为 Rich 标签
+    text = text.replace("[", "\\[")
+
+    # 2. 块级数学 $$...$$（先匹配更长的）
+    text = re.sub(r"\$\$(.+?)\$\$", r"[dim cyan]$$\1$$[/dim cyan]", text, flags=re.DOTALL)
+
+    # 3. 行内数学 $...$
+    text = re.sub(r"(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)", r"[dim cyan]$\1$[/dim cyan]", text)
+
+    # 4. 粗体 **...**
+    text = re.sub(r"\*\*(.+?)\*\*", r"[bold]\1[/bold]", text)
+
+    # 5. 斜体 *...*（单星号，不匹配 **）
+    text = re.sub(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", r"[italic]\1[/italic]", text)
+
+    # 6. 行内代码 `...`
+    text = re.sub(r"`(.+?)`", r"[dim cyan]\1[/dim cyan]", text)
+
+    return text
+
+
 class _PickerDisplay:
     """替代 Rich Live 的简单 live display。
 
@@ -1566,21 +1592,21 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
     def _render():
         lines = []
         if question:
-            lines.append(f"[bold white]{question}[/bold white]")
+            lines.append(f"[bold white]{_md_to_rich(question)}[/bold white]")
             lines.append("[dim]" + "─" * 50 + "[/dim]")
         for i, opt in enumerate(options):
             if opt.get("separator"):
                 lines.append(f"[dim italic]  ── {opt['text']} ──[/dim italic]")
                 continue
             num = f"[{opt['num']}]"
-            text = opt["text"][:100]
+            text = _md_to_rich(opt["text"][:100])
             mark = "[bold green]✓[/bold green] " if i in checked else "  "
             if blank_mode and i == idx:
                 # 显示正在填空的选项
                 parts = options[i]["text"].split("___")
                 rendered = ""
                 for bi, p in enumerate(parts):
-                    rendered += p
+                    rendered += _md_to_rich(p)
                     if bi < len(parts) - 1:
                         fill = blank_fills[bi] if bi < len(blank_fills) else ""
                         if bi == blank_idx:
@@ -1590,7 +1616,7 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
                 lines.append(f"[bold yellow on blue] ✎ [{options[i]['num']}] {rendered}[/bold yellow on blue]")
             elif editing and i == idx:
                 cursor = "[dim yellow]▌[/dim yellow]"
-                lines.append(f"[bold yellow on blue] ✎ {num} {edit_buf}{cursor}[/bold yellow on blue]")
+                lines.append(f"[bold yellow on blue] ✎ {num} {_md_to_rich(edit_buf)}{cursor}[/bold yellow on blue]")
             elif i == idx and not focus_input:
                 lines.append(f"[bold white on cyan] {mark}{num} [/bold white on cyan][bold cyan] {text}[/bold cyan]")
             else:
@@ -1879,13 +1905,13 @@ def _pick_multi_question(questions: list[dict]) -> dict | None:
             title_style = "bold cyan" if focused else "dim"
             title = f"[{title_style}]问题 {qi + 1}/{n_questions}[/{title_style}]"
             lines = []
-            q_text = q.get("text", "")
+            q_text = _md_to_rich(q.get("text", ""))
             if q_text:
                 lines.append(f"[bold white]{q_text}[/bold white]")
                 lines.append("[dim]" + "─" * 40 + "[/dim]")
             for oi, opt in enumerate(q.get("options", [])):
                 num = f"[{opt['num']}]"
-                txt = opt["text"][:80]
+                txt = _md_to_rich(opt["text"][:80])
                 if focused and oi == o_idx[qi]:
                     lines.append(f"[bold white on cyan]   {num} [/bold white on cyan][bold cyan] {txt}[/bold cyan]")
                 elif selected[qi] == oi:
