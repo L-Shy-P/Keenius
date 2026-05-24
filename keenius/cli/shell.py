@@ -90,13 +90,14 @@ class _PickerDisplay:
     def stop(self):
         self._active = False
 
-    def update(self, renderable, cursor_row=0, cursor_col=0):
+    def update(self, renderable, cursor_up=0, cursor_right=0):
         if self._active:
             console.clear()
             console.print(renderable)
-            if cursor_row:
-                # CUP 绝对定位 row;col（行、列均从 1 开始）
-                console.file.write(f"\033[{cursor_row};{max(cursor_col, 1)}H")
+            if cursor_up:
+                console.file.write(f"\033[{cursor_up}A")
+                if cursor_right:
+                    console.file.write(f"\033[{cursor_right}C")
                 console.file.flush()
 
 
@@ -1615,12 +1616,11 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
     _opt_content_lines = 0  # 由 _render() 更新
 
     def _update_display():
-        """渲染面板，CUP 绝对定位光标到 ▌ 的位置。"""
+        """渲染面板，CU光标供 IME 定位。"""
         renderable = _render()
         if inputting:
-            row = _opt_content_lines + 6  # N+4(opt) + 1(inp border) + 1(content)
-            # 边框1 + 内边距2 + ▸  前缀2 = 5, 再 +1 到 ▌ 位置
-            col = 5 + _visual_width(input_buf) + 1
+            up = 2
+            right = 5 + _visual_width(input_buf) - 1
         elif editing:
             vi = 0
             if question:
@@ -1629,14 +1629,15 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
                 if i == idx:
                     break
                 vi += 1
-            row = vi + 3  # 顶边框(1) + 顶内边距(1)
+            N = _opt_content_lines
+            up = N + 5 - vi
             num_str = f"[{options[idx]['num']}]"
             prefix = f" ✎  {num_str} "
-            col = 3 + _visual_width(prefix) + _visual_width(_md_to_rich(edit_buf)) + 1
+            right = 3 + _visual_width(prefix) + _visual_width(_md_to_rich(edit_buf)) - 1
         else:
-            row = 0
-            col = 0
-        display.update(renderable, cursor_row=row, cursor_col=col)
+            up = 0
+            right = 0
+        display.update(renderable, cursor_up=up, cursor_right=right)
 
     console.print()
 
