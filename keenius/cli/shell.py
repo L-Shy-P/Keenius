@@ -1620,8 +1620,8 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
         renderable = _render()
         if inputting:
             up = 2
-            # 输入栏左边框(1) + 内边距(2) + ▸前缀  = 5 列
-            right = 5 + _visual_width(input_buf)
+            # 边框(1)+内边距(2)+▸前缀(2)+文字 - 光标▌占位(1)
+            right = 5 + _visual_width(input_buf) - 1
         elif editing:
             vi = 0
             if question:
@@ -1632,10 +1632,10 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
                 vi += 1
             N = _opt_content_lines
             up = N + 5 - vi
-            # 边框(1) + 内边距(2) + " ✎  [N] " 前缀 = 3 + 前缀可视宽
             num_str = f"[{options[idx]['num']}]"
             prefix = f" ✎  {num_str} "
-            right = 3 + _visual_width(prefix) + _visual_width(_md_to_rich(edit_buf))
+            # 边框(1)+内边距(2)+前缀+文字 - 光标▌占位(1)
+            right = 3 + _visual_width(prefix) + _visual_width(_md_to_rich(edit_buf)) - 1
         else:
             up = 0
             right = 0
