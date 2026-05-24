@@ -1585,19 +1585,19 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
     console.print()
 
     def _render():
-        lines = []
+        # ── 选项面板 ──
+        opt_lines = []
         if question:
-            lines.append(f"[bold white]{_md_to_rich(question)}[/bold white]")
-            lines.append("[dim]" + "─" * 50 + "[/dim]")
+            opt_lines.append(f"[bold white]{_md_to_rich(question)}[/bold white]")
+            opt_lines.append("[dim]" + "─" * 50 + "[/dim]")
         for i, opt in enumerate(options):
             if opt.get("separator"):
-                lines.append(f"[dim italic]  ── {opt['text']} ──[/dim italic]")
+                opt_lines.append(f"[dim italic]  ── {opt['text']} ──[/dim italic]")
                 continue
             num = f"[{opt['num']}]"
             text = _md_to_rich(opt["text"][:100])
             mark = "[bold green]✓[/bold green] " if i in checked else "  "
             if blank_mode and i == idx:
-                # 显示正在填空的选项
                 parts = options[i]["text"].split("___")
                 rendered = ""
                 for bi, p in enumerate(parts):
@@ -1608,45 +1608,78 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
                             rendered += f"[bold white on green]{fill or '___'}▌[/bold white on green]"
                         else:
                             rendered += f"[dim green]{fill or '___'}[/dim green]"
-                lines.append(f"[bold yellow on blue] ✎ [{options[i]['num']}] {rendered}[/bold yellow on blue]")
+                opt_lines.append(f"[bold yellow on blue] ✎ [{options[i]['num']}] {rendered}[/bold yellow on blue]")
             elif editing and i == idx:
                 cursor = "[dim yellow]▌[/dim yellow]"
-                lines.append(f"[bold yellow on blue] ✎ {num} {_md_to_rich(edit_buf)}{cursor}[/bold yellow on blue]")
+                opt_lines.append(f"[bold yellow on blue] ✎ {num} {_md_to_rich(edit_buf)}{cursor}[/bold yellow on blue]")
             elif i == idx and not focus_input:
-                lines.append(f"[bold white on cyan] {mark}{num} [/bold white on cyan][bold cyan] {text}[/bold cyan]")
+                opt_lines.append(f"[bold white on cyan] {mark}{num} [/bold white on cyan][bold cyan] {text}[/bold cyan]")
             else:
                 dm = "[dim green]✓[/dim green] " if i in checked else "  "
-                lines.append(f"[dim]{dm}{num}  {text}[/dim]")
-        lines.append("")
-        # 输入栏
-        if focus_input:
-            cursor = "[dim yellow]▌[/dim yellow]"
-            lines.append(f"[bold cyan]▸[/bold cyan] [bold white]{input_buf}{cursor}[/bold white]")
-        else:
-            hint = input_buf if input_buf else "[dim]▸ 在此输入补充文字...[/dim]"
-            lines.append(f"[dim]{hint}[/dim]")
-        lines.append("")
-        # 面板内的按键提示
+                opt_lines.append(f"[dim]{dm}{num}  {text}[/dim]")
+        # 选项面板底栏
         if warn_msg:
-            lines.append(f"[bold yellow]⚠ {warn_msg}[/bold yellow]")
+            opt_lines.append(f"[bold yellow]⚠ {warn_msg}[/bold yellow]")
         if checked:
-            lines.append(f"[bold green]已选 {len(checked)} 项[/bold green]")
-        if blank_mode:
-            n_blanks = len(blank_fills)
-            lines.append(f"[bold yellow]🔤 填空模式（{n_blanks}空） [bold]Tab/←→[/bold][dim]=切换空  [bold]Enter[/bold][dim]=确认  [bold]Esc[/bold][dim]=取消[/dim][/bold yellow]")
-        elif editing:
-            lines.append("[bold yellow]✎ 编辑中  [bold]Enter[/bold][dim]=确认  [bold]Esc[/bold][dim]=取消[/dim][/bold yellow]")
-        else:
-            lines.append(f"[dim][bold cyan]↑↓[/bold cyan][dim]选项  [bold cyan]Space[/bold cyan][dim]编辑  [bold cyan]+[/bold cyan][dim]多选  [bold cyan]Enter[/bold cyan][dim]确认  [bold cyan]Esc[/bold cyan][dim]跳过[/dim][/dim]")
+            opt_lines.append(f"[bold green]已选 {len(checked)} 项[/bold green]")
 
-        return Panel(
-            "\n".join(lines),
+        # 选项面板焦点状态
+        if focus_input:
+            opt_border = "dim"
+            opt_title_style = "dim"
+        else:
+            opt_border = "yellow" if editing else ("green" if blank_mode else ("blue" if is_multi else "bright_cyan"))
+            opt_title_style = "bold yellow" if editing else ("bold green" if blank_mode else ("bold blue" if is_multi else "bold cyan"))
+        opt_title_text = ("[bold green]🔤 填空[/bold green]" if blank_mode
+                     else ("[bold yellow]编辑选项[/bold yellow]" if editing
+                     else ("[bold blue]请选择（可多选）[/bold blue]" if is_multi
+                     else "[bold cyan]请选择[/bold cyan]")))
+
+        opt_panel = Panel(
+            "\n".join(opt_lines),
             box=HEAVY,
-            border_style="yellow" if editing else ("green" if blank_mode else ("blue" if is_multi else "bright_cyan")),
-            title="[bold green]🔤 填空[/bold green]" if blank_mode else ("[bold yellow]编辑选项[/bold yellow]" if editing else ("[bold blue]请选择（可多选）[/bold blue]" if is_multi else "[bold cyan]请选择[/bold cyan]")),
+            border_style=opt_border,
+            title=opt_title_text,
             title_align="center",
             padding=(1, 2),
         )
+
+        # ── 输入面板 ──
+        input_lines = []
+        if focus_input:
+            cursor = "[dim yellow]▌[/dim yellow]"
+            input_lines.append(f"[bold cyan]▸[/bold cyan] [bold white]{input_buf}{cursor}[/bold white]")
+        else:
+            hint = input_buf if input_buf else "▸ 在此输入补充文字..."
+            input_lines.append(f"[dim]{hint}[/dim]")
+
+        # 按键提示
+        if blank_mode:
+            n_blanks = len(blank_fills)
+            input_lines.append(f"[dim][bold yellow]🔤 填空（{n_blanks}空） Tab/←→ 切换空  Enter 确认  Esc 取消[/bold yellow][/dim]")
+        elif editing:
+            input_lines.append("[dim][bold yellow]✎ 编辑中  Enter 确认  Esc 取消[/bold yellow][/dim]")
+        else:
+            input_lines.append("[dim]↑↓ 选项  Space 编辑  + 多选  Enter 确认  Esc 跳过[/dim]")
+
+        if focus_input:
+            inp_border = "bright_cyan"
+            inp_title = "[bold cyan]✏️ 输入[/bold cyan]"
+        else:
+            inp_border = "dim"
+            inp_title = "[dim]✏️ 输入[/dim]"
+
+        inp_panel = Panel(
+            "\n".join(input_lines),
+            box=HEAVY,
+            border_style=inp_border,
+            title=inp_title,
+            title_align="center",
+            padding=(0, 2),
+        )
+
+        from rich.console import Group
+        return Group(opt_panel, inp_panel)
 
     display = _PickerDisplay()
     display.start(_render())
@@ -1733,70 +1766,79 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
                 display.update(_render())
                 continue
 
-            # ── 输入栏模式 ──
-            if focus_input:
-                # 使用 prompt_toolkit 进行输入法友好的文本输入
-                display.stop()
-                console.print(_render())
-                from prompt_toolkit.shortcuts import prompt as pt_prompt
-                try:
-                    result = pt_prompt(
-                        [("class:prompt", "▸ ")],
-                        default=input_buf,
-                        style=CHAT_STYLE,
-                        wrap_lines=False,
-                        enable_system_prompt=False,
-                    )
-                except (EOFError, KeyboardInterrupt):
-                    focus_input = False
-                    warn_msg = ""
-                    display.start(_render())
-                    continue
-                if result is not None:
-                    input_buf = result
-                    # 像按下 Enter 一样处理
-                    if checked:
-                        selected = "；".join(options[i]["text"] for i in sorted(checked))
-                    else:
-                        selected = options[idx]["text"] if idx < n_opts else ""
-                    if input_buf.strip():
-                        selected = f"{selected}\n[补充] {input_buf.strip()}" if selected else input_buf.strip()
-                    if not selected.strip():
-                        warn_msg = "请选择选项或输入内容后再确认"
-                        focus_input = False
-                        display.start(_render())
-                        display.update(_render())
-                        continue
-                    console.print(f"  [dim]已发送: {_e(selected[:80])}[/dim]")
-                    console.print()
-                    if loop and input_buf.strip():
-                        loop.notify_llm(f"用户补充说明：{input_buf.strip()}")
-                    return selected
-                else:
-                    # 按了 Esc，返回导航模式
-                    focus_input = False
-                    warn_msg = ""
-                display.start(_render())
-                display.update(_render())
-                continue
-
-            # ── 正常导航 ──
+            # ── 统一导航（选项 + 输入栏）──
             key = msvcrt.getch()
             if key == b"\xe0":
                 key = msvcrt.getch()
-                if key == b"H":
-                    idx = _next_real(idx, -1) if n_opts else 0
+                if key == b"H":  # 上箭头
+                    if focus_input:
+                        # 从输入栏回到最后一个选项
+                        focus_input = False
+                        idx = max(0, n_opts - 1) if n_opts else 0
+                        while idx > 0 and options[idx].get("separator"):
+                            idx -= 1
+                    elif n_opts:
+                        idx = _next_real(idx, -1)
                     warn_msg = ""
-                elif key == b"P":
-                    if idx >= n_opts - 1 or _next_real(idx, 1) == idx:
-                        focus_input = True
+                elif key == b"P":  # 下箭头
+                    if focus_input:
+                        pass  # 已在最底部
+                    elif idx >= n_opts - 1 or _next_real(idx, 1) == idx:
+                        focus_input = True  # 进入输入栏
                     else:
                         idx = _next_real(idx, 1) if n_opts else 0
                     warn_msg = ""
             elif key == b"\t":
-                if n_opts:
+                if focus_input:
+                    focus_input = False
+                    idx = 0
+                    while idx < n_opts and options[idx].get("separator"):
+                        idx += 1
+                elif n_opts:
                     idx = _next_real(idx, 1)
-            elif key == b"\r":
+            elif key == b"\r":  # 回车
+                # 输入栏聚焦时 → 激活 prompt_toolkit 输入
+                if focus_input:
+                    display.stop()
+                    console.print(_render())
+                    from prompt_toolkit.shortcuts import prompt as pt_prompt
+                    try:
+                        result = pt_prompt(
+                            [("class:prompt", "▸ ")],
+                            default=input_buf,
+                            style=CHAT_STYLE,
+                            wrap_lines=False,
+                            enable_system_prompt=False,
+                        )
+                    except (EOFError, KeyboardInterrupt):
+                        focus_input = False
+                        display.start(_render())
+                        continue
+                    if result is not None:
+                        input_buf = result
+                        if checked:
+                            selected = "；".join(options[i]["text"] for i in sorted(checked))
+                        else:
+                            selected = options[idx]["text"] if idx < n_opts else ""
+                        if input_buf.strip():
+                            selected = f"{selected}\n[补充] {input_buf.strip()}" if selected else input_buf.strip()
+                        if not selected.strip():
+                            warn_msg = "请选择选项或输入内容后再确认"
+                            focus_input = False
+                            display.start(_render())
+                            display.update(_render())
+                            continue
+                        console.print(f"  [dim]已发送: {_e(selected[:80])}[/dim]")
+                        console.print()
+                        if loop and input_buf.strip():
+                            loop.notify_llm(f"用户补充说明：{input_buf.strip()}")
+                        return selected
+                    else:
+                        focus_input = False
+                    display.start(_render())
+                    display.update(_render())
+                    continue
+                # 选项聚焦时
                 if is_multi and not checked:
                     warn_msg = "这是多选题，请先按 + 勾选选项"
                 elif checked:
@@ -1827,11 +1869,15 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
                         loop.notify_llm(f"用户补充说明：{input_buf.strip()}")
                     return selected
             elif key == b" ":  # 空格 = 编辑
-                if idx < n_opts and not options[idx].get("separator"):
+                if focus_input:
+                    pass  # 输入栏不响应编辑键
+                elif idx < n_opts and not options[idx].get("separator"):
                     editing = True
                     edit_buf = options[idx]["text"]
             elif key in (b"+", b"="):  # + 号 = 多选
-                if idx < n_opts and not options[idx].get("separator"):
+                if focus_input:
+                    pass
+                elif idx < n_opts and not options[idx].get("separator"):
                     if idx in checked:
                         checked.discard(idx)
                     else:
@@ -1840,17 +1886,20 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
                             loop.notify_llm(f"用户勾选了选项 [{options[idx]['num']}]：{options[idx]['text'][:60]}")
                     warn_msg = ""
             elif key in (b"a", b"A"):
-                if checked:
-                    checked.clear()
-                else:
-                    checked = set(range(n_opts))
-                warn_msg = ""
+                if not focus_input:
+                    if checked:
+                        checked.clear()
+                    else:
+                        checked = set(range(n_opts))
+                    warn_msg = ""
             elif key in (b"i", b"I"):
-                checked = set(range(n_opts)) - checked
-                warn_msg = ""
+                if not focus_input:
+                    checked = set(range(n_opts)) - checked
+                    warn_msg = ""
             elif key in (b"\x1b", b"\x03"):
-                # 两阶段 Esc：先清除状态，再退出
-                if checked:
+                if focus_input:
+                    focus_input = False  # 先从输入栏回到选项
+                elif checked:
                     checked.clear()
                 elif input_buf.strip():
                     input_buf = ""
