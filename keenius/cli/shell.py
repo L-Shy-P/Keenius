@@ -1266,8 +1266,7 @@ def run_shell_with_session(data: dict) -> None:
                 follow_up = loop.send_message(selected)
                 _auto_save_silent(loop)
                 _display_reasoning(loop)
-                if not _extract_options(follow_up) and not _extract_multi_questions(follow_up):
-                    print_response_panel(follow_up, loop.phase)
+                print_response_panel(follow_up, loop.phase)
                 opt_result = _extract_options(follow_up)
             except Exception as e:
                 print_error(f"请求失败: {e}")
@@ -1400,10 +1399,9 @@ def _run_repl_loop(loop: ConversationLoop) -> None:
 
         # 显示推理内容（Hermes dim 框）然后显示回复
         _display_reasoning(loop)
-        # 仅在未检测到选项时显示回复（选择器负责处理选项的显示）
         from keenius.agent.display import print_response_panel
-        if not _extract_options(response) and not _extract_multi_questions(response):
-            print_response_panel(response, loop.phase)
+        # 始终显示完整回复（带 MD 渲染），选择框负责交互
+        print_response_panel(response, loop.phase)
 
         # 有意义的对话后自动保存
         _auto_save_silent(loop)
@@ -1422,8 +1420,7 @@ def _run_repl_loop(loop: ConversationLoop) -> None:
                 follow_up = loop.send_message(combined)
                 _auto_save_silent(loop)
                 _display_reasoning(loop)
-                if not _extract_options(follow_up) and not _extract_multi_questions(follow_up):
-                    print_response_panel(follow_up, loop.phase)
+                print_response_panel(follow_up, loop.phase)
             continue
 
         # ── 单问题选择 ──
@@ -1438,9 +1435,7 @@ def _run_repl_loop(loop: ConversationLoop) -> None:
             follow_up = loop.send_message(selected)
             _auto_save_silent(loop)
             _display_reasoning(loop)
-            # 仅当 follow_up 没有选项时才显示（否则由下一个选择器显示）
-            if not _extract_options(follow_up) and not _extract_multi_questions(follow_up):
-                print_response_panel(follow_up, loop.phase)
+            print_response_panel(follow_up, loop.phase)
             opt_result = _extract_options(follow_up)
         if pick_chain > 0:
             continue
