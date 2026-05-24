@@ -1604,11 +1604,10 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
         """渲染面板，移动不可见光标供 IME 定位。"""
         renderable = _render()
         if inputting:
-            # console.print 末尾 \n 导致光标在底部下一行
-            # 输入面板内容行 = 选项面板(N+4) + 输入顶边框(1) = N+5 行
-            # 光标 = N+7+1 = N+8, 目标 = N+6, up = 2
+            # console.print 末尾加 \n，光标在输出底部下一行
+            # up 到输入栏内容行；right 到文字末尾
             up = 2
-            right = 4 + len(input_buf)
+            right = 6 + len(input_buf)
         elif editing:
             vi = 0
             if question:
@@ -1619,7 +1618,9 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
                 vi += 1
             N = _opt_content_lines
             up = N + 5 - vi
-            right = 7 + len(f"[{options[idx]['num']}]") + len(edit_buf)
+            # 左边框(1) + 内边距(2) + " ✎  [N] " + edit_buf
+            num_str = f"[{options[idx]['num']}]"
+            right = 3 + 7 + len(num_str) + len(edit_buf)
         else:
             up = 0
             right = 0
