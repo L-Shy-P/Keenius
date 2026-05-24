@@ -75,14 +75,13 @@ class _PickerDisplay:
     def stop(self):
         self._active = False
 
-    def update(self, renderable, cursor_up=0, cursor_right=0):
+    def update(self, renderable, cursor_up=0, cursor_col=0):
         if self._active:
             console.clear()
             console.print(renderable)
             if cursor_up:
-                # console.print() 末尾有 \n，光标在最后一行下一行
-                # CUU = cursor up, CUF = cursor forward (right)
-                console.file.write(f"\033[{cursor_up}A\033[{cursor_right}C")
+                # CUU 上移后，用 CHA 设置绝对列位置
+                console.file.write(f"\033[{cursor_up}A\033[{max(cursor_col, 1)}G")
                 console.file.flush()
 
 
@@ -1604,10 +1603,8 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
         """渲染面板，移动不可见光标供 IME 定位。"""
         renderable = _render()
         if inputting:
-            # console.print 末尾加 \n，光标在输出底部下一行
-            # up 到输入栏内容行；right 到文字末尾
             up = 2
-            right = 6 + len(input_buf)
+            col = 5 + len(input_buf)
         elif editing:
             vi = 0
             if question:
@@ -1618,13 +1615,16 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
                 vi += 1
             N = _opt_content_lines
             up = N + 5 - vi
-            # 左边框(1) + 内边距(2) + " ✎  [N] " + edit_buf
+            # 锚点：选项文字 " [N] text" 从面板内容第4列开始（左边框1+内边距2=3，再右1列）
+            # 编辑模式下前缀 "✎ " 替换原 "  "，多占约2列
+            # col = 左3 + 前缀宽度 + num宽度 + 空格 + edit长度
             num_str = f"[{options[idx]['num']}]"
-            right = 3 + 7 + len(num_str) + len(edit_buf)
+            # ✎ 占2列宽，前缀 "✎  [N] " = 2+2+len(num)+1 = 5+len(num)
+            col = 3 + 5 + len(num_str) + 1 + len(edit_buf)
         else:
             up = 0
-            right = 0
-        display.update(renderable, cursor_up=up, cursor_right=right)
+            col = 0
+        display.update(renderable, cursor_up=up, cursor_col=col)
 
     console.print()
 
