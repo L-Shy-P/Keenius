@@ -64,6 +64,8 @@ class _PickerDisplay:
 
     def __init__(self):
         self._active = False
+        self._cursor_up = 0
+        self._cursor_right = 0
 
     def start(self, renderable=None):
         self._active = True
@@ -73,10 +75,16 @@ class _PickerDisplay:
     def stop(self):
         self._active = False
 
-    def update(self, renderable):
+    def update(self, renderable, cursor_up=0, cursor_right=0):
         if self._active:
             console.clear()
             console.print(renderable)
+            if cursor_up or cursor_right:
+                import sys
+                sys.stdout.write(f"\033[{cursor_up}A")
+                if cursor_right:
+                    sys.stdout.write(f"\033[{cursor_right}C")
+                sys.stdout.flush()
 
 
 # ── 斜杠命令注册表 ────────────────────────────────────────────
@@ -597,7 +605,7 @@ def _view_curriculum_hierarchy(plan: dict) -> str:
                 elif len(ch) == 1 and ch.isprintable():
                     edit_buf += ch
                 # 多字节字符（中文等）通过 getwch 作为单个宽字符传入
-                display.update(_render())
+                live.update(_render())
                 continue
 
             # ── 正常导航模式 ──
@@ -1583,6 +1591,44 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
                 return i
         return i
 
+    def _update_display():
+        """渲染并定位光标到输入/编辑位置。"""
+        renderable = _render()
+        up = 0
+        right = 0
+        if inputting:
+            # 输入面板高度 3（上下边框 + 1 行内容），光标在内容行
+            up = 1  # 从底部跳过一个下边框
+            right = 4 + len(input_buf)  # 左边距 2 + 前缀 ▸  宽度 2
+        elif editing:
+            # 找到编辑选项在 opt_lines 中的视觉行号
+            opt_lines_count = 0
+            if question:
+                opt_lines_count += 2  # 问题行 + 分隔线
+            edit_vi = -1
+            for i, opt in enumerate(options):
+                if opt.get("separator"):
+                    opt_lines_count += 1
+                elif i == idx:
+                    edit_vi = opt_lines_count
+                    break
+                else:
+                    opt_lines_count += 1
+            if edit_vi >= 0:
+                total_opt_lines = 0
+                if question:
+                    total_opt_lines += 2
+                for opt in options:
+                    total_opt_lines += 1
+                # 从底部到编辑行的距离：
+                # inp_panel(3) + opt_bottom(2) + remaining opt lines below edit
+                below = total_opt_lines - edit_vi - 1
+                up = 3 + 2 + below
+                # 右边距：左边距 2 + 标记 2 + 数字前后
+                num_str = f"[{options[idx]['num']}]"
+                right = 2 + 2 + len(num_str) + 1 + len(edit_buf)
+        display.update(renderable, cursor_up=up, cursor_right=right)
+
     console.print()
 
     def _render():
@@ -1726,7 +1772,7 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
                     blank_mode = False
                     warn_msg = ""
                 display.start(_render())
-                display.update(_render())
+                _update_display()
                 continue
 
             # ── 输入栏原地输入模式 ──
@@ -1745,7 +1791,7 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
                         selected = f"{selected}\n[补充] {result.strip()}" if selected else result.strip()
                     if not selected.strip():
                         warn_msg = "请选择选项或输入内容后再确认"
-                        display.update(_render())
+                        _update_display()
                         continue
                     console.print(f"  [dim]已发送: {_e(selected[:80])}[/dim]")
                     console.print()
@@ -1765,7 +1811,7 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
                     input_buf += ch
                 elif ord(ch) > 127:
                     input_buf += ch
-                display.update(_render())
+                _update_display()
                 continue
 
             # ── 内联编辑模式（原地 msvcrt 输入）──
@@ -1793,7 +1839,7 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
                     edit_buf += ch
                 elif ord(ch) > 127:
                     edit_buf += ch  # 多字节字符（中文等 IME 输出）
-                display.update(_render())
+                _update_display()
                 continue
 
             # ── 统一导航（选项 + 输入栏）──
@@ -1830,7 +1876,7 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
                 # 输入栏聚焦时 → 进入原地输入模式
                 if focus_input:
                     inputting = True
-                    display.update(_render())
+                    _update_display()
                     continue
                 # 选项聚焦时
                 if is_multi and not checked:
@@ -1852,7 +1898,7 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
                         blank_fills = [""] * (len(blank_parts) - 1)
                         blank_idx = 0
                         warn_msg = ""
-                        display.update(_render())
+                        _update_display()
                         continue
                     selected = txt
                     if input_buf.strip():
@@ -1904,7 +1950,7 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
                     return None
             else:
                 continue
-            display.update(_render())
+            _update_display()
     finally:
         console.clear()
 
