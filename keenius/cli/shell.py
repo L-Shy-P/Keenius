@@ -75,13 +75,13 @@ class _PickerDisplay:
     def stop(self):
         self._active = False
 
-    def update(self, renderable, cursor_up=0, cursor_col=0):
+    def update(self, renderable, cursor_row=0, cursor_col=0):
         if self._active:
             console.clear()
             console.print(renderable)
-            if cursor_up:
-                # CUU 上移后，用 CHA 设置绝对列位置
-                console.file.write(f"\033[{cursor_up}A\033[{max(cursor_col, 1)}G")
+            if cursor_row:
+                # CUP 绝对定位：\033[row;colH
+                console.file.write(f"\033[{cursor_row};{max(cursor_col, 1)}H")
                 console.file.flush()
 
 
@@ -1602,8 +1602,10 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
     def _update_display():
         """渲染面板，移动不可见光标供 IME 定位。"""
         renderable = _render()
+        row = 0
+        col = 0
         if inputting:
-            up = 2
+            row = _opt_content_lines + 6  # 选项面板(N+4) + 输入顶边框(1) + 到内容行(1)
             col = 5 + len(input_buf)
         elif editing:
             vi = 0
@@ -1613,18 +1615,10 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
                 if i == idx:
                     break
                 vi += 1
-            N = _opt_content_lines
-            up = N + 5 - vi
-            # 锚点：选项文字 " [N] text" 从面板内容第4列开始（左边框1+内边距2=3，再右1列）
-            # 编辑模式下前缀 "✎ " 替换原 "  "，多占约2列
-            # col = 左3 + 前缀宽度 + num宽度 + 空格 + edit长度
+            row = vi + 3  # 顶边框(1) + 顶内边距(1) + vi 行内容
             num_str = f"[{options[idx]['num']}]"
-            # ✎ 占2列宽，前缀 "✎  [N] " = 2+2+len(num)+1 = 5+len(num)
-            col = 3 + 5 + len(num_str) + 1 + len(edit_buf)
-        else:
-            up = 0
-            col = 0
-        display.update(renderable, cursor_up=up, cursor_col=col)
+            col = 10 + len(num_str) + len(edit_buf)
+        display.update(renderable, cursor_row=row, cursor_col=col)
 
     console.print()
 
