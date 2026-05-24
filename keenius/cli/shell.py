@@ -56,17 +56,22 @@ def _md_to_rich(text: str) -> str:
 
 
 def _visual_width(text: str) -> int:
-    """计算去除 Rich 标记后的可视列宽。CJK 字符占 2 列。"""
+    """计算去除 Rich 标记后的终端列宽。参照 Claude Code eastAsianWidth(ambiguousAsWide=false)。"""
+    import unicodedata
+
     # 去除 Rich 标记 [...]，保留 [N] 数字选项
     plain = re.sub(r"\[(?!\d+\])[^\]]*\]", "", text)
     # 去除 Markdown 格式符
     plain = re.sub(r"\*\*|\*|`", "", plain)
     w = 0
     for ch in plain:
-        if ord(ch) > 127:
+        ea = unicodedata.east_asian_width(ch)
+        if ea in ('W', 'F'):
             w += 2
-        else:
+        elif ea in ('Na', 'H', 'N', 'A'):
             w += 1
+        else:
+            w += 1  # 默认 1
     return w
 
 
@@ -1620,7 +1625,7 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
         renderable = _render()
         if inputting:
             up = 2
-            right = 5 + _visual_width(input_buf) - 1
+            right = 5 + _visual_width(input_buf) - 2
         elif editing:
             vi = 0
             if question:
@@ -1633,7 +1638,7 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
             up = N + 5 - vi
             num_str = f"[{options[idx]['num']}]"
             prefix = f" ✎  {num_str} "
-            right = 3 + _visual_width(prefix) + _visual_width(_md_to_rich(edit_buf)) - 1
+            right = 3 + _visual_width(prefix) + _visual_width(_md_to_rich(edit_buf)) - 2
         else:
             up = 0
             right = 0
