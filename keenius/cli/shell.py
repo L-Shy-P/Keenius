@@ -1625,7 +1625,7 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
         renderable = _render()
         if inputting:
             up = 2
-            right = 5 + _visual_width(input_buf) - 2
+            right = 5 + _visual_width(input_buf) - 1
         elif editing:
             vi = 0
             if question:
@@ -1638,7 +1638,7 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
             up = N + 5 - vi
             num_str = f"[{options[idx]['num']}]"
             prefix = f" ✎  {num_str} "
-            right = 3 + _visual_width(prefix) + _visual_width(_md_to_rich(edit_buf)) - 2
+            right = 3 + _visual_width(prefix) + _visual_width(_md_to_rich(edit_buf)) - 1
         else:
             up = 0
             right = 0
