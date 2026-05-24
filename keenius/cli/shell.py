@@ -75,15 +75,10 @@ class _PickerDisplay:
     def stop(self):
         self._active = False
 
-    def update(self, renderable, cursor_row=0, cursor_col=0):
+    def update(self, renderable):
         if self._active:
-            import sys
             console.clear()
             console.print(renderable)
-            if cursor_row:
-                # 绝对光标定位：\033[row;colH
-                console.file.write(f"\033[{cursor_row};{max(cursor_col, 1)}H")
-                console.file.flush()
 
 
 # ── 斜杠命令注册表 ────────────────────────────────────────────
@@ -578,6 +573,8 @@ def _view_curriculum_hierarchy(plan: dict) -> str:
     # 定位到终端顶部附近
     console.print("\n\n")
     display = _PickerDisplay()
+    console.file.write("\033[?25l")
+    console.file.flush()
     display.start(_render())
     try:
         while True:
@@ -706,6 +703,8 @@ def _view_curriculum_hierarchy(plan: dict) -> str:
                 continue
             display.update(_render())
     finally:
+        console.file.write("\033[?25h")
+        console.file.flush()
         console.clear()
 
     if result_msg:
@@ -1124,6 +1123,8 @@ def session_picker(sessions: list[dict]) -> dict | str | None:
     rename_buf = ""
 
     display = _PickerDisplay()
+    console.file.write("\033[?25l")
+    console.file.flush()
     display.start(_render())
     try:
         while True:
@@ -1181,6 +1182,8 @@ def session_picker(sessions: list[dict]) -> dict | str | None:
             else: continue
             display.update(_render())
     finally:
+        console.file.write("\033[?25h")
+        console.file.flush()
         console.clear()
 
 
@@ -1590,41 +1593,9 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
                 return i
         return i
 
-    # 追踪面板渲染后的内容行数，供光标定位用
-    _opt_content_lines = 0
-
     def _update_display():
-        """渲染并定位光标到输入/编辑位置。"""
-        renderable = _render()
-        if not (inputting or editing):
-            display.update(renderable)
-            return
-
-        row = 0
-        col = 0
-        if inputting:
-            # 绝对行号：选项面板高度 + 输入面板顶边框 + 到内容行
-            # opt_panel = top(1) + pad(1) + N + pad(1) + bot(1) = N+4
-            # inp content row = 1 + N+4 + 1 = N+6
-            row = 1 + _opt_content_lines + 4 + 1
-            col = 1 + 2 + 2 + len(input_buf)  # 边框 + 内边距 + ▸  前缀 + 文字
-        elif editing:
-            # 计算编辑行在选项面板内容中的视觉行号 (vi)
-            vi = 0
-            if question:
-                vi += 2
-            for i, opt in enumerate(options):
-                if i == idx:
-                    break
-                vi += 1
-            # 绝对行号 = 顶边框(1) + 顶内边距(1) + vi
-            row = 1 + 1 + vi + 1
-            # 列 = 左边框(1) + 左内边距(2) + 编辑前缀 " ✎  [N] " + 文字
-            num_str = f"[{options[idx]['num']}]"
-            prefix_vis = 6 + len(num_str)  # " ✎  " + [N] + " "
-            col = 1 + 2 + prefix_vis + len(edit_buf)
-
-        display.update(renderable, cursor_row=row, cursor_col=col)
+        """渲染面板（光标隐藏，▌ 在面板内可视）。"""
+        display.update(_render())
 
     console.print()
 
@@ -1715,11 +1686,11 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
         )
 
         from rich.console import Group
-        nonlocal _opt_content_lines
-        _opt_content_lines = len(opt_lines)
         return Group(opt_panel, inp_panel)
 
     display = _PickerDisplay()
+    console.file.write("\033[?25l")
+    console.file.flush()
     display.start(_render())
     try:
         while True:
@@ -1951,6 +1922,8 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
                 continue
             _update_display()
     finally:
+        console.file.write("\033[?25h")
+        console.file.flush()
         console.clear()
 
 
@@ -2019,6 +1992,8 @@ def _pick_multi_question(questions: list[dict]) -> dict | None:
         )
 
     display = _PickerDisplay()
+    console.file.write("\033[?25l")
+    console.file.flush()
     display.start(_render())
     try:
         while True:
@@ -2061,6 +2036,8 @@ def _pick_multi_question(questions: list[dict]) -> dict | None:
                 continue
             display.update(_render())
     finally:
+        console.file.write("\033[?25h")
+        console.file.flush()
         console.clear()
 
 
