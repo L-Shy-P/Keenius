@@ -75,10 +75,15 @@ class _PickerDisplay:
     def stop(self):
         self._active = False
 
-    def update(self, renderable):
+    def update(self, renderable, cursor_up=0, cursor_right=0):
         if self._active:
             console.clear()
             console.print(renderable)
+            if cursor_up:
+                # console.print() 末尾有 \n，光标在最后一行下一行
+                # CUU = cursor up, CUF = cursor forward (right)
+                console.file.write(f"\033[{cursor_up}A\033[{cursor_right}C")
+                console.file.flush()
 
 
 # ── 斜杠命令注册表 ────────────────────────────────────────────
@@ -1593,9 +1598,32 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
                 return i
         return i
 
+    _opt_content_lines = 0  # 由 _render() 更新
+
     def _update_display():
-        """渲染面板（光标隐藏，▌ 在面板内可视）。"""
-        display.update(_render())
+        """渲染面板，移动不可见光标供 IME 定位。"""
+        renderable = _render()
+        if inputting:
+            # console.print 末尾 \n 导致光标在底部下一行
+            # 输入面板内容行 = 选项面板(N+4) + 输入顶边框(1) = N+5 行
+            # 光标 = N+7+1 = N+8, 目标 = N+6, up = 2
+            up = 2
+            right = 4 + len(input_buf)
+        elif editing:
+            vi = 0
+            if question:
+                vi += 2
+            for i, opt in enumerate(options):
+                if i == idx:
+                    break
+                vi += 1
+            N = _opt_content_lines
+            up = N + 5 - vi
+            right = 7 + len(f"[{options[idx]['num']}]") + len(edit_buf)
+        else:
+            up = 0
+            right = 0
+        display.update(renderable, cursor_up=up, cursor_right=right)
 
     console.print()
 
@@ -1686,6 +1714,8 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
         )
 
         from rich.console import Group
+        nonlocal _opt_content_lines
+        _opt_content_lines = len(opt_lines)
         return Group(opt_panel, inp_panel)
 
     display = _PickerDisplay()
