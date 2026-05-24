@@ -75,13 +75,14 @@ class _PickerDisplay:
     def stop(self):
         self._active = False
 
-    def update(self, renderable, cursor_row=0, cursor_col=0):
+    def update(self, renderable, cursor_up=0, cursor_right=0):
         if self._active:
             console.clear()
             console.print(renderable)
-            if cursor_row:
-                # CUP 绝对定位：\033[row;colH
-                console.file.write(f"\033[{cursor_row};{max(cursor_col, 1)}H")
+            if cursor_up:
+                console.file.write(f"\033[{cursor_up}A")
+                if cursor_right:
+                    console.file.write(f"\033[{cursor_right}C")
                 console.file.flush()
 
 
@@ -1602,11 +1603,9 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
     def _update_display():
         """渲染面板，移动不可见光标供 IME 定位。"""
         renderable = _render()
-        row = 0
-        col = 0
         if inputting:
-            row = _opt_content_lines + 6  # 选项面板(N+4) + 输入顶边框(1) + 到内容行(1)
-            col = 5 + len(input_buf)
+            up = 2  # console.print 末尾 \n + 输入面板下边框 = 2 行
+            right = 6 + len(input_buf)
         elif editing:
             vi = 0
             if question:
@@ -1615,10 +1614,14 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
                 if i == idx:
                     break
                 vi += 1
-            row = vi + 3  # 顶边框(1) + 顶内边距(1) + vi 行内容
+            N = _opt_content_lines
+            up = N + 5 - vi  # 之前验证行号正确的公式
             num_str = f"[{options[idx]['num']}]"
-            col = 10 + len(num_str) + len(edit_buf)
-        display.update(renderable, cursor_row=row, cursor_col=col)
+            right = 14 + len(num_str) + len(edit_buf)
+        else:
+            up = 0
+            right = 0
+        display.update(renderable, cursor_up=up, cursor_right=right)
 
     console.print()
 
