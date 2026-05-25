@@ -97,14 +97,12 @@ class _PickerDisplay:
         if not self._active:
             return
         if lines <= 0:
-            # 回退模式：每次全清屏
             console.clear()
         elif self._first:
             console.clear()
             self._first = False
             self._lines = lines
         else:
-            # 上移覆盖上次区域
             console.file.write(f"\033[{self._lines}A\033[J")
             self._lines = lines
         console.print(renderable)
@@ -112,6 +110,11 @@ class _PickerDisplay:
             console.file.write(f"\033[{cursor_up}A")
             if cursor_right:
                 console.file.write(f"\033[{cursor_right}C")
+        else:
+            # 非编辑/输入模式：光标回到面板顶部，避免终端跟滚
+            total = self._lines if lines > 0 else lines
+            if total > 0:
+                console.file.write(f"\033[{total}A")
         console.file.flush()
 
 
@@ -653,7 +656,7 @@ def _view_curriculum_hierarchy(plan: dict) -> str:
     # 定位到终端顶部附近
     console.print("\n\n")
     display = _PickerDisplay()
-    console.file.write("\033[?25l\033[?1049h")
+    console.file.write("\033[?25l")
     console.file.flush()
     display.start(_render())
     try:
@@ -783,7 +786,7 @@ def _view_curriculum_hierarchy(plan: dict) -> str:
                 continue
             display.update(_render())
     finally:
-        console.file.write("\033[?25h\033[?1049l")  # 显示光标 + 退出 alternate screen
+        console.file.write("\033[?25h")  # 显示光标
         console.file.flush()
 
     if result_msg:
@@ -1202,7 +1205,7 @@ def session_picker(sessions: list[dict]) -> dict | str | None:
     rename_buf = ""
 
     display = _PickerDisplay()
-    console.file.write("\033[?25l\033[?1049h")
+    console.file.write("\033[?25l")
     console.file.flush()
     display.start(_render())
     try:
@@ -1261,7 +1264,7 @@ def session_picker(sessions: list[dict]) -> dict | str | None:
             else: continue
             display.update(_render())
     finally:
-        console.file.write("\033[?25h\033[?1049l")  # 显示光标 + 退出 alternate screen
+        console.file.write("\033[?25h")  # 显示光标
         console.file.flush()
 
 
@@ -1811,7 +1814,7 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
         return Group(opt_panel, inp_panel)
 
     display = _PickerDisplay()
-    console.file.write("\033[?25l\033[?1049h")
+    console.file.write("\033[?25l")
     console.file.flush()
     display.start(_render())
     try:
@@ -2044,7 +2047,7 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
                 continue
             _update_display()
     finally:
-        console.file.write("\033[?25h\033[?1049l")  # 显示光标 + 退出 alternate screen
+        console.file.write("\033[?25h")  # 显示光标
         console.file.flush()
 
 
@@ -2113,7 +2116,7 @@ def _pick_multi_question(questions: list[dict]) -> dict | None:
         )
 
     display = _PickerDisplay()
-    console.file.write("\033[?25l\033[?1049h")
+    console.file.write("\033[?25l")
     console.file.flush()
     display.start(_render())
     try:
@@ -2157,7 +2160,7 @@ def _pick_multi_question(questions: list[dict]) -> dict | None:
                 continue
             display.update(_render())
     finally:
-        console.file.write("\033[?25h\033[?1049l")  # 显示光标 + 退出 alternate screen
+        console.file.write("\033[?25h")  # 显示光标
         console.file.flush()
 
 
