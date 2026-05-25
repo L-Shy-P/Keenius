@@ -101,11 +101,11 @@ class _PickerDisplay:
             self._first = False
         elif self._prev_lines:
             console.file.write(f"\033[{self._prev_lines}A")
-        # 用临时 render 计行
+        # 用临时 Rich Console 渲染计行
+        from rich.console import Console as RichConsole
         import io as _io
         buf = _io.StringIO()
-        temp = Console(file=buf, force_terminal=True, width=console.width)
-        temp.print(renderable)
+        RichConsole(file=buf, force_terminal=True, width=console.width).print(renderable)
         output = buf.getvalue()
         self._prev_lines = max(output.count('\n'), 1)
         console.file.write(output)
