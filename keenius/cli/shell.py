@@ -76,13 +76,15 @@ def _visual_width(text: str) -> int:
 
 
 class _PickerDisplay:
-    """清屏重印显示，每次 console.clear() + 重新渲染。"""
+    """原地刷新显示：首次清屏，后续用 \033[s/\033[u/\033[J 原位覆盖。"""
 
     def __init__(self):
         self._active = False
+        self._first = True
 
     def start(self, renderable=None):
         self._active = True
+        self._first = True
         if renderable is not None:
             self.update(renderable)
 
@@ -92,13 +94,18 @@ class _PickerDisplay:
     def update(self, renderable, cursor_up=0, cursor_right=0):
         if not self._active:
             return
-        console.clear()
+        if self._first:
+            console.clear()
+            self._first = False
+        else:
+            console.file.write("\033[u\033[J")
+        console.file.write("\033[s")
         console.print(renderable)
         if cursor_up:
             console.file.write(f"\033[{cursor_up}A")
             if cursor_right:
                 console.file.write(f"\033[{cursor_right}C")
-            console.file.flush()
+        console.file.flush()
 
 
 # ── 斜杠命令注册表 ────────────────────────────────────────────
