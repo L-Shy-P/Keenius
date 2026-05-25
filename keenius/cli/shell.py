@@ -76,15 +76,13 @@ def _visual_width(text: str) -> int:
 
 
 class _PickerDisplay:
-    """原地刷新显示：首次清屏，后续用光标上移 + 重印覆盖。"""
+    """清屏重印显示，每次 console.clear() + 重新渲染。"""
 
     def __init__(self):
         self._active = False
-        self._first = True
 
     def start(self, renderable=None):
         self._active = True
-        self._first = True
         if renderable is not None:
             self.update(renderable)
 
@@ -94,26 +92,13 @@ class _PickerDisplay:
     def update(self, renderable, cursor_up=0, cursor_right=0):
         if not self._active:
             return
-        # 计行：选项面板 N+4 + 输入面板 3 = N+7，加额外 1 行缓冲
-        # 非首次渲染时上移覆盖，不清屏
-        if self._first:
-            console.clear()
-            self._first = False
-        elif self._prev_lines:
-            console.file.write(f"\033[{self._prev_lines}A")
-        # 用临时 Rich Console 渲染计行
-        from rich.console import Console as RichConsole
-        import io as _io
-        buf = _io.StringIO()
-        RichConsole(file=buf, force_terminal=True, width=console.width).print(renderable)
-        output = buf.getvalue()
-        self._prev_lines = max(output.count('\n'), 1)
-        console.file.write(output)
+        console.clear()
+        console.print(renderable)
         if cursor_up:
             console.file.write(f"\033[{cursor_up}A")
             if cursor_right:
                 console.file.write(f"\033[{cursor_right}C")
-        console.file.flush()
+            console.file.flush()
 
 
 # ── 斜杠命令注册表 ────────────────────────────────────────────
