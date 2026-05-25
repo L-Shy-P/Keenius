@@ -75,31 +75,32 @@ def _visual_width(text: str) -> int:
 
 
 class _PickerDisplay:
-    """原地刷新：首次清屏，后续上移覆盖（无清屏，避免终端滚屏）。"""
+    """原地刷新：首次清屏打印，后续仅上移覆盖（无清屏命令，避免终端滚屏）。"""
 
     def __init__(self):
         self._active = False
-        self._lines = 0  # 上次渲染行数
-
-    def start(self, renderable=None):
-        self._active = True
         self._lines = 0
-        if renderable is not None:
-            self.update(renderable)
+
+    def start(self, renderable, lines=None):
+        """首次渲染：清屏 + 打印。lines=None 时后续 update 无效。"""
+        self._active = True
+        console.clear()
+        console.print(renderable)
+        self._lines = lines or 0
 
     def stop(self):
         self._active = False
 
     def update(self, renderable, lines=0, cursor_up=0, cursor_right=0):
-        """lines: 本次渲染行数（用于下次上移），0=未知则清屏"""
+        """后续渲染：上移覆盖（有行数时），否则回退清屏。"""
         if not self._active:
             return
-        if self._lines <= 0 or lines <= 0:
+        if self._lines <= 0:
             console.clear()
         else:
-            # 仅上移，不清屏
             console.file.write(f"\033[{self._lines}A")
         self._lines = lines
+        console.file.write(f"\033[{self._lines}A")
         console.print(renderable)
         if cursor_up:
             console.file.write(f"\033[{cursor_up}A")
@@ -1802,10 +1803,12 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
         _opt_content_lines = len(opt_lines)
         return Group(opt_panel, inp_panel)
 
+    # 预渲染获取行数，传给 start 避免首次 update 再次清屏
+    _pre_render = _render()
     display = _PickerDisplay()
     console.file.write("\033[?25l")
     console.file.flush()
-    display.start(_render())
+    display.start(_pre_render, lines=_opt_content_lines + 8)
     try:
         while True:
             # ── 填空模式 ──
