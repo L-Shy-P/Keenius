@@ -76,19 +76,15 @@ def _visual_width(text: str) -> int:
 
 
 class _PickerDisplay:
-    """替代 Rich Live 的简单 live display。
-
-    使用 console.clear() + 重新渲染代替光标追踪，内容超出终端高度时
-    向上溢出到滚动缓冲区，用户可以向上滚动查看全部选项。
-    """
+    """原地刷新显示：首次清屏，后续用光标上移 + 重印覆盖。"""
 
     def __init__(self):
         self._active = False
-        self._cursor_up = 0
-        self._cursor_right = 0
+        self._first = True
 
     def start(self, renderable=None):
         self._active = True
+        self._first = True
         if renderable is not None:
             self.update(renderable)
 
@@ -96,14 +92,28 @@ class _PickerDisplay:
         self._active = False
 
     def update(self, renderable, cursor_up=0, cursor_right=0):
-        if self._active:
+        if not self._active:
+            return
+        # 计行：选项面板 N+4 + 输入面板 3 = N+7，加额外 1 行缓冲
+        # 非首次渲染时上移覆盖，不清屏
+        if self._first:
             console.clear()
-            console.print(renderable)
-            if cursor_up:
-                console.file.write(f"\033[{cursor_up}A")
-                if cursor_right:
-                    console.file.write(f"\033[{cursor_right}C")
-                console.file.flush()
+            self._first = False
+        elif self._prev_lines:
+            console.file.write(f"\033[{self._prev_lines}A")
+        # 用临时 render 计行
+        import io as _io
+        buf = _io.StringIO()
+        temp = Console(file=buf, force_terminal=True, width=console.width)
+        temp.print(renderable)
+        output = buf.getvalue()
+        self._prev_lines = max(output.count('\n'), 1)
+        console.file.write(output)
+        if cursor_up:
+            console.file.write(f"\033[{cursor_up}A")
+            if cursor_right:
+                console.file.write(f"\033[{cursor_right}C")
+        console.file.flush()
 
 
 # ── 斜杠命令注册表 ────────────────────────────────────────────
