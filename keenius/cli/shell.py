@@ -75,47 +75,28 @@ def _visual_width(text: str) -> int:
 
 
 class _PickerDisplay:
-    """原地刷新：首次清屏，后续计算行数上移覆盖。"""
+    """清屏重印显示。"""
 
     def __init__(self):
         self._active = False
-        self._lines = 0
-        self._first = True
 
     def start(self, renderable=None):
         self._active = True
-        self._lines = 0
-        self._first = True
         if renderable is not None:
             self.update(renderable)
 
     def stop(self):
         self._active = False
 
-    def update(self, renderable, lines=0, cursor_up=0, cursor_right=0):
-        """lines: renderable 行数（含 console.print 尾换行），0=回退清屏"""
-        if not self._active:
-            return
-        if lines <= 0:
+    def update(self, renderable, cursor_up=0, cursor_right=0):
+        if self._active:
             console.clear()
-        elif self._first:
-            console.clear()
-            self._first = False
-            self._lines = lines
-        else:
-            console.file.write(f"\033[{self._lines}A\033[J")
-            self._lines = lines
-        console.print(renderable)
-        if cursor_up:
-            console.file.write(f"\033[{cursor_up}A")
-            if cursor_right:
-                console.file.write(f"\033[{cursor_right}C")
-        else:
-            # 非编辑/输入模式：光标回到面板顶部，避免终端跟滚
-            total = self._lines if lines > 0 else lines
-            if total > 0:
-                console.file.write(f"\033[{total}A")
-        console.file.flush()
+            console.print(renderable)
+            if cursor_up:
+                console.file.write(f"\033[{cursor_up}A")
+                if cursor_right:
+                    console.file.write(f"\033[{cursor_right}C")
+                console.file.flush()
 
 
 class _ChatDisplay:
@@ -1697,8 +1678,6 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
     def _update_display():
         """渲染面板，CU光标供 IME 定位。"""
         renderable = _render()
-        # 面板行数：选项(opt_lines+4) + 输入(3) + console.print 尾换行(1) = opt_lines+8
-        total_lines = _opt_content_lines + 8
         if inputting:
             up = 2
             right = 5 + _visual_width(input_buf) - 1
@@ -1718,7 +1697,7 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
         else:
             up = 0
             right = 0
-        display.update(renderable, lines=total_lines, cursor_up=up, cursor_right=right)
+        display.update(renderable, cursor_up=up, cursor_right=right)
 
     console.print()
 
