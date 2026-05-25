@@ -1,4 +1,4 @@
-﻿"""Keenius agent 的核心对话循环。"""
+"""Keenius agent 的核心对话循环。"""
 
 from __future__ import annotations
 import json
@@ -288,11 +288,11 @@ class ConversationLoop:
             elif finish_reason == "content_filter":
                 self.notify_llm("上一条回复因内容安全策略被拦截，部分内容未输出。")
 
-        # ── 主循环：带自然滚动的流式输出 ──
-        # 纯文本 → console.print 终端原生滚动。
-        # 检测到选项 → 切换到 Live 面板。
+        # ── 主循环：静默收集流式数据 ──
+        # 内容由调用方通过 print_response_panel 统一展示。
         finish_reason: str | None = None
 
+        display.console.print("[dim]思考中...[/dim]")
         try:
             for chunk in stream:
                 choice = chunk.choices[0] if chunk.choices else None
@@ -309,7 +309,6 @@ class ConversationLoop:
 
                 if delta.content:
                     content_parts.append(delta.content)
-                    display.console.print(delta.content, end="", markup=False)
 
                 if delta.tool_calls:
                     for tc in delta.tool_calls:
@@ -330,7 +329,8 @@ class ConversationLoop:
                     if _split_stream(text) or _split_multi_stream(text):
                         options_active = True
 
-            display.console.print()
+            display.console.file.write("\033[1A\033[2K")
+            display.console.file.flush()
 
             if tool_call_buffer:
                 text = "".join(content_parts)
@@ -349,7 +349,8 @@ class ConversationLoop:
 
             return None
         except Exception as exc:
-            display.console.print()
+            display.console.file.write("\033[1A\033[2K")
+            display.console.file.flush()
             if content_parts:
                 final_text = "".join(content_parts)
                 final_reasoning = "".join(reasoning_parts)

@@ -92,13 +92,13 @@ class _PickerDisplay:
         self._active = False
 
     def update(self, renderable, lines=0, cursor_up=0, cursor_right=0):
-        """后续渲染：上移覆盖（有行数时），否则回退清屏。"""
+        """后续渲染：绝对定位到第 1 行 + 清至屏底，全覆盖。"""
         if not self._active:
             return
         if self._lines <= 0:
             console.clear()
         else:
-            console.file.write(f"\033[{self._lines}A")
+            console.file.write(f"\033[1;1H\033[J")
         self._lines = lines
         console.file.write(f"\033[{self._lines}A")
         console.print(renderable)

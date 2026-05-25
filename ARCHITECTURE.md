@@ -1,4 +1,4 @@
-﻿# Keenius 架构文档
+# Keenius 架构文档
 
 ## 概述
 
@@ -28,6 +28,7 @@ Keenius/
 │   │       ├── SlashCompleter      Tab 补全
 │   │       ├── Key bindings        Ctrl+D/Alt+Enter/Ctrl+C
 │   │       ├── Slash commands      /setup /config /profile /save /load /sessions ...
+│   │       ├── _ChatDisplay        聊天显示管理器（原地刷新，避免内容累积）
 │   │       └── run_shell()         主 REPL 循环
 │   │
 │   ├── agent/                    ← Agent 层
@@ -35,10 +36,10 @@ Keenius/
 │   │   ├── loop.py               ← ConversationLoop：对话循环 & 会话持久化
 │   │   │   ├── start()             初始化 system prompt（不发 API 调用）
 │   │   │   ├── send_message()      发送用户消息 → 返回 LLM 回复
-│   │   │   ├── _stream_llm()       token 级别流式输出（Rich Live）
+│   │   │   ├── _stream_llm()       静默收集流式数据（显示由调用方统一处理）
 │   │   │   ├── save() / load()     会话 JSON 存档
 │   │   │   └── list_sessions()     列出历史会话
-│   │   └── display.py            ← Rich 终端美化输出（欢迎横幅/工具调用/流式显示）
+│   │   └── display.py            ← Rich 终端美化输出（欢迎横幅/工具调用/格式化面板）
 │   │
 │   ├── tutor/                    ← 教学层（你主要修改这里）
 │   │   └── prompts.py            ← 系统提示词 + 学生画像框架 + 学科适配
@@ -87,10 +88,7 @@ Keenius/
     └────┬────┘
          │ No
          ▼
-    display.py 流式渲染 Markdown → 返回文本
-         │
-         ▼
-    shell.py 打印分隔线 → 等待下次输入
+    shell.py 通过 print_response_panel 格式化展示回复
 ```
 
 ## 配置系统

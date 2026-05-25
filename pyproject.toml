@@ -1,6 +1,6 @@
 [project]
 name = "keenius"
-version = "0.2.1"
+version = "0.2.2"
 description = "CLI AI Teacher for efficient self-learning"
 requires-python = ">=3.10"
 dependencies = [
