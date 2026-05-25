@@ -75,7 +75,7 @@ def _visual_width(text: str) -> int:
 
 
 class _PickerDisplay:
-    """清屏重印显示。"""
+    """清屏重印显示。使用 os.system('cls') 确保 Windows 终端全清。"""
 
     def __init__(self):
         self._active = False
@@ -90,7 +90,8 @@ class _PickerDisplay:
 
     def update(self, renderable, cursor_up=0, cursor_right=0):
         if self._active:
-            console.clear()
+            import os
+            os.system('cls' if os.name == 'nt' else 'clear')
             console.print(renderable)
             if cursor_up:
                 console.file.write(f"\033[{cursor_up}A")
