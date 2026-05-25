@@ -92,21 +92,24 @@ class _PickerDisplay:
         self._active = False
 
     def update(self, renderable, lines=0, cursor_up=0, cursor_right=0):
-        """后续渲染：绝对定位到第 1 行 + 清至屏底，全覆盖。"""
+        """后续渲染：相对上移覆盖 + 空白行填残留。"""
         if not self._active:
             return
-        if self._lines <= 0:
+        old_lines = self._lines
+        if old_lines <= 0:
             console.clear()
         else:
-            console.file.write(f"\033[1;1H\033[J")
+            console.file.write(f"\033[{old_lines}A")
         self._lines = lines
-        console.file.write(f"\033[{self._lines}A")
         console.print(renderable)
+        if lines > 0 and lines < old_lines:
+            gap = old_lines - lines
+            console.file.write(("\n\033[K" * gap) + f"\033[{gap}A")
         if cursor_up:
             console.file.write(f"\033[{cursor_up}A")
             if cursor_right:
                 console.file.write(f"\033[{cursor_right}C")
-            console.file.flush()
+        console.file.flush()
 
 
 class _ChatDisplay:
