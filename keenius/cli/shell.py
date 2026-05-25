@@ -115,6 +115,52 @@ class _PickerDisplay:
         console.file.flush()
 
 
+class _ChatDisplay:
+    """聊天显示管理器：实现原地刷新，避免内容累积。"""
+
+    def __init__(self):
+        self._is_first_response = True
+
+    def clear_screen(self):
+        """完全清屏（包括滚动缓冲区）。"""
+        import os
+        os.system('cls' if os.name == 'nt' else 'clear')
+
+    def display_response(self, response_text, phase="", reasoning_text=None):
+        """显示回复，完全清屏后重绘。"""
+        # 非首次显示时清屏
+        if not self._is_first_response:
+            self.clear_screen()
+        self._is_first_response = False
+
+        # 显示推理内容
+        if reasoning_text:
+            _display_reasoning_text(reasoning_text)
+
+        # 显示回复面板
+        from keenius.agent.display import print_response_panel
+        print_response_panel(response_text, phase)
+
+    def display_slash_result(self, result_text):
+        """显示斜杠命令结果。"""
+        # 非首次显示时清屏
+        if not self._is_first_response:
+            self.clear_screen()
+        self._is_first_response = False
+
+        console.print(result_text)
+
+
+def _display_reasoning_text(reasoning_text):
+    """显示推理内容。"""
+    if reasoning_text:
+        from keenius.agent.display import print_reasoning_box_open, print_reasoning_text, print_reasoning_box_close
+        rtext = reasoning_text[:400] + ("..." if len(reasoning_text) > 400 else "")
+        print_reasoning_box_open()
+        print_reasoning_text(rtext)
+        print_reasoning_box_close()
+
+
 # ── 斜杠命令注册表 ────────────────────────────────────────────
 
 SLASH_COMMANDS: dict[str, dict] = {
@@ -607,7 +653,7 @@ def _view_curriculum_hierarchy(plan: dict) -> str:
     # 定位到终端顶部附近
     console.print("\n\n")
     display = _PickerDisplay()
-    console.file.write("\033[?25l")
+    console.file.write("\033[?25l\033[?1049h")
     console.file.flush()
     display.start(_render())
     try:
@@ -737,9 +783,8 @@ def _view_curriculum_hierarchy(plan: dict) -> str:
                 continue
             display.update(_render())
     finally:
-        console.file.write("\033[?25h")
+        console.file.write("\033[?25h\033[?1049l")  # 显示光标 + 退出 alternate screen
         console.file.flush()
-        console.clear()
 
     if result_msg:
         return f"📋 教学大纲已查看。（附言: {result_msg}）"
@@ -1157,7 +1202,7 @@ def session_picker(sessions: list[dict]) -> dict | str | None:
     rename_buf = ""
 
     display = _PickerDisplay()
-    console.file.write("\033[?25l")
+    console.file.write("\033[?25l\033[?1049h")
     console.file.flush()
     display.start(_render())
     try:
@@ -1216,9 +1261,8 @@ def session_picker(sessions: list[dict]) -> dict | str | None:
             else: continue
             display.update(_render())
     finally:
-        console.file.write("\033[?25h")
+        console.file.write("\033[?25h\033[?1049l")  # 显示光标 + 退出 alternate screen
         console.file.flush()
-        console.clear()
 
 
 def run_shell_with_session(data: dict) -> None:
@@ -1309,8 +1353,14 @@ def run_shell_with_session(data: dict) -> None:
             try:
                 follow_up = loop.send_message(selected)
                 _auto_save_silent(loop)
-                _display_reasoning(loop)
-                print_response_panel(follow_up, loop.phase)
+                # 使用原地刷新显示
+                chat_display = _ChatDisplay()
+                chat_display.display_response(
+                    follow_up,
+                    phase=loop.phase,
+                    reasoning_text=loop._last_reasoning
+                )
+                loop._last_reasoning = ""
                 opt_result = _extract_options(follow_up)
             except Exception as e:
                 print_error(f"请求失败: {e}")
@@ -1396,6 +1446,7 @@ def _run_repl_loop(loop: ConversationLoop) -> None:
     )
 
     context = {"loop": loop}
+    chat_display = _ChatDisplay()
 
     while loop.running:
         try:
@@ -1425,7 +1476,7 @@ def _run_repl_loop(loop: ConversationLoop) -> None:
                 _auto_save_on_exit(loop)
                 print_info("再见！学习愉快 📚")
                 break
-            console.print(cmd_result)
+            chat_display.display_slash_result(cmd_result)
             continue
 
         # Agent 交互
@@ -1441,11 +1492,14 @@ def _run_repl_loop(loop: ConversationLoop) -> None:
                 print_error(f"请求失败: {msg}")
             continue
 
-        # 显示推理内容（Hermes dim 框）然后显示回复
-        _display_reasoning(loop)
-        from keenius.agent.display import print_response_panel
-        # 始终显示完整回复（带 MD 渲染），选择框负责交互
-        print_response_panel(response, loop.phase)
+        # 使用聊天显示管理器显示回复（原地刷新）
+        chat_display.display_response(
+            response,
+            phase=loop.phase,
+            reasoning_text=loop._last_reasoning
+        )
+        # 清除已显示的推理内容
+        loop._last_reasoning = ""
 
         # 有意义的对话后自动保存
         _auto_save_silent(loop)
@@ -1463,8 +1517,12 @@ def _run_repl_loop(loop: ConversationLoop) -> None:
                 combined = "；".join(answers)
                 follow_up = loop.send_message(combined)
                 _auto_save_silent(loop)
-                _display_reasoning(loop)
-                print_response_panel(follow_up, loop.phase)
+                chat_display.display_response(
+                    follow_up,
+                    phase=loop.phase,
+                    reasoning_text=loop._last_reasoning
+                )
+                loop._last_reasoning = ""
             continue
 
         # ── 单问题选择 ──
@@ -1478,8 +1536,12 @@ def _run_repl_loop(loop: ConversationLoop) -> None:
                 break
             follow_up = loop.send_message(selected)
             _auto_save_silent(loop)
-            _display_reasoning(loop)
-            print_response_panel(follow_up, loop.phase)
+            chat_display.display_response(
+                follow_up,
+                phase=loop.phase,
+                reasoning_text=loop._last_reasoning
+            )
+            loop._last_reasoning = ""
             opt_result = _extract_options(follow_up)
         if pick_chain > 0:
             continue
@@ -1749,7 +1811,7 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
         return Group(opt_panel, inp_panel)
 
     display = _PickerDisplay()
-    console.file.write("\033[?25l")
+    console.file.write("\033[?25l\033[?1049h")
     console.file.flush()
     display.start(_render())
     try:
@@ -1982,9 +2044,8 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
                 continue
             _update_display()
     finally:
-        console.file.write("\033[?25h")
+        console.file.write("\033[?25h\033[?1049l")  # 显示光标 + 退出 alternate screen
         console.file.flush()
-        console.clear()
 
 
 def _pick_multi_question(questions: list[dict]) -> dict | None:
@@ -2052,7 +2113,7 @@ def _pick_multi_question(questions: list[dict]) -> dict | None:
         )
 
     display = _PickerDisplay()
-    console.file.write("\033[?25l")
+    console.file.write("\033[?25l\033[?1049h")
     console.file.flush()
     display.start(_render())
     try:
@@ -2096,9 +2157,8 @@ def _pick_multi_question(questions: list[dict]) -> dict | None:
                 continue
             display.update(_render())
     finally:
-        console.file.write("\033[?25h")
+        console.file.write("\033[?25h\033[?1049l")  # 显示光标 + 退出 alternate screen
         console.file.flush()
-        console.clear()
 
 
 def _review_curriculum(lessons: list) -> list[int]:
