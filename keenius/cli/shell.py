@@ -98,8 +98,10 @@ class _PickerDisplay:
             console.clear()
             self._first = False
         else:
-            console.file.write("\033[u\033[J")
+            # 回到原位，清除整个屏幕，重新打印
+            console.file.write("\033[u\033[2J")
         console.file.write("\033[s")
+        console.file.flush()
         console.print(renderable)
         if cursor_up:
             console.file.write(f"\033[{cursor_up}A")
