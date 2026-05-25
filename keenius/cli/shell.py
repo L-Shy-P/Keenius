@@ -75,40 +75,32 @@ def _visual_width(text: str) -> int:
 
 
 class _PickerDisplay:
-    """原地刷新：首次清屏打印，后续仅上移覆盖（无清屏命令，避免终端滚屏）。"""
+    """DEC 同步更新显示：\033[?2026h/l 包裹，终端原子渲染无闪烁。"""
 
     def __init__(self):
         self._active = False
-        self._lines = 0
 
-    def start(self, renderable, lines=None):
-        """首次渲染：清屏 + 打印。lines=None 时后续 update 无效。"""
+    def start(self, renderable):
+        """首次渲染：清屏 + 打印。"""
         self._active = True
         console.clear()
         console.print(renderable)
-        self._lines = lines or 0
 
     def stop(self):
         self._active = False
 
-    def update(self, renderable, lines=0, cursor_up=0, cursor_right=0):
-        """后续渲染：相对上移覆盖 + 空白行填残留。"""
+    def update(self, renderable, cursor_up=0, cursor_right=0):
+        """后续渲染：DEC 同步更新，清屏+重印，终端不会看到中间状态。"""
         if not self._active:
             return
-        old_lines = self._lines
-        if old_lines <= 0:
-            console.clear()
-        else:
-            console.file.write(f"\033[{old_lines}A")
-        self._lines = lines
+        console.file.write("\033[?2026h")  # 开始同步更新
+        console.clear()
         console.print(renderable)
-        if lines > 0 and lines < old_lines:
-            gap = old_lines - lines
-            console.file.write(("\n\033[K" * gap) + f"\033[{gap}A")
         if cursor_up:
             console.file.write(f"\033[{cursor_up}A")
             if cursor_right:
                 console.file.write(f"\033[{cursor_right}C")
+        console.file.write("\033[?2026l")  # 结束同步更新
         console.file.flush()
 
 
@@ -1691,7 +1683,6 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
     def _update_display():
         """渲染面板，CU光标供 IME 定位。"""
         renderable = _render()
-        total_lines = _opt_content_lines + 8  # 面板行数 + console.print 尾换行
         if inputting:
             up = 2
             right = 5 + _visual_width(input_buf) - 1
@@ -1711,7 +1702,7 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
         else:
             up = 0
             right = 0
-        display.update(renderable, lines=total_lines, cursor_up=up, cursor_right=right)
+        display.update(renderable, cursor_up=up, cursor_right=right)
 
     console.print()
 
@@ -1806,12 +1797,10 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
         _opt_content_lines = len(opt_lines)
         return Group(opt_panel, inp_panel)
 
-    # 预渲染获取行数，传给 start 避免首次 update 再次清屏
-    _pre_render = _render()
     display = _PickerDisplay()
     console.file.write("\033[?25l")
     console.file.flush()
-    display.start(_pre_render, lines=_opt_content_lines + 8)
+    display.start(_render())
     try:
         while True:
             # ── 填空模式 ──
