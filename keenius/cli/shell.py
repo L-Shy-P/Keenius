@@ -11,6 +11,7 @@ from rich.markup import escape as _e
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.completion import Completer, Completion
 import re
+import unicodedata
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.document import Document
 
@@ -57,12 +58,10 @@ def _md_to_rich(text: str) -> str:
 
 def _visual_width(text: str) -> int:
     """计算去除 Rich 标记后的终端列宽。参照 Claude Code eastAsianWidth(ambiguousAsWide=false)。"""
-    import unicodedata
-
     # 去除 Rich 标记 [...]，保留 [N] 数字选项
     plain = re.sub(r"\[(?!\d+\])[^\]]*\]", "", text)
-    # 去除 Markdown 格式符
-    plain = re.sub(r"\*\*|\*|`", "", plain)
+    # 去除 _md_to_rich 产生的转义反斜杠
+    plain = plain.replace("\\[", "[")
     w = 0
     for ch in plain:
         ea = unicodedata.east_asian_width(ch)
@@ -71,7 +70,7 @@ def _visual_width(text: str) -> int:
         elif ea in ('Na', 'H', 'N', 'A'):
             w += 1
         else:
-            w += 1  # 默认 1
+            w += 1
     return w
 
 
@@ -636,7 +635,7 @@ def _view_curriculum_hierarchy(plan: dict) -> str:
                 elif len(ch) == 1 and ch.isprintable():
                     edit_buf += ch
                 # 多字节字符（中文等）通过 getwch 作为单个宽字符传入
-                live.update(_render())
+                display.update(_render())
                 continue
 
             # ── 正常导航模式 ──
