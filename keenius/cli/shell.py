@@ -75,29 +75,37 @@ def _visual_width(text: str) -> int:
 
 
 class _PickerDisplay:
-    """清屏重印显示。使用 os.system('cls') 确保 Windows 终端全清。"""
+    """原地刷新：首次清屏，后续上移覆盖（无清屏，避免终端滚屏）。"""
 
     def __init__(self):
         self._active = False
+        self._lines = 0  # 上次渲染行数
 
     def start(self, renderable=None):
         self._active = True
+        self._lines = 0
         if renderable is not None:
             self.update(renderable)
 
     def stop(self):
         self._active = False
 
-    def update(self, renderable, cursor_up=0, cursor_right=0):
-        if self._active:
-            import os
-            os.system('cls' if os.name == 'nt' else 'clear')
-            console.print(renderable)
-            if cursor_up:
-                console.file.write(f"\033[{cursor_up}A")
-                if cursor_right:
-                    console.file.write(f"\033[{cursor_right}C")
-                console.file.flush()
+    def update(self, renderable, lines=0, cursor_up=0, cursor_right=0):
+        """lines: 本次渲染行数（用于下次上移），0=未知则清屏"""
+        if not self._active:
+            return
+        if self._lines <= 0 or lines <= 0:
+            console.clear()
+        else:
+            # 仅上移，不清屏
+            console.file.write(f"\033[{self._lines}A")
+        self._lines = lines
+        console.print(renderable)
+        if cursor_up:
+            console.file.write(f"\033[{cursor_up}A")
+            if cursor_right:
+                console.file.write(f"\033[{cursor_right}C")
+            console.file.flush()
 
 
 class _ChatDisplay:
@@ -1679,6 +1687,7 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
     def _update_display():
         """渲染面板，CU光标供 IME 定位。"""
         renderable = _render()
+        total_lines = _opt_content_lines + 8  # 面板行数 + console.print 尾换行
         if inputting:
             up = 2
             right = 5 + _visual_width(input_buf) - 1
@@ -1698,7 +1707,7 @@ def _pick_choice_interactive(options: list, question: str = "", loop=None):
         else:
             up = 0
             right = 0
-        display.update(renderable, cursor_up=up, cursor_right=right)
+        display.update(renderable, lines=total_lines, cursor_up=up, cursor_right=right)
 
     console.print()
 
