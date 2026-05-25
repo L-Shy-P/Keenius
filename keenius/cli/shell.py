@@ -90,18 +90,15 @@ class _PickerDisplay:
         self._active = False
 
     def update(self, renderable, cursor_up=0, cursor_right=0):
-        """后续渲染：DEC 同步更新，清屏+重印，终端不会看到中间状态。"""
         if not self._active:
             return
-        console.file.write("\033[?2026h")  # 开始同步更新
         console.clear()
         console.print(renderable)
         if cursor_up:
             console.file.write(f"\033[{cursor_up}A")
             if cursor_right:
                 console.file.write(f"\033[{cursor_right}C")
-        console.file.write("\033[?2026l")  # 结束同步更新
-        console.file.flush()
+            console.file.flush()
 
 
 class _ChatDisplay:
@@ -1481,14 +1478,12 @@ def _run_repl_loop(loop: ConversationLoop) -> None:
                 print_error(f"请求失败: {msg}")
             continue
 
-        # 使用聊天显示管理器显示回复（原地刷新）
-        chat_display.display_response(
-            response,
-            phase=loop.phase,
-            reasoning_text=loop._last_reasoning
-        )
-        # 清除已显示的推理内容
-        loop._last_reasoning = ""
+        # 显示推理内容
+        _display_reasoning(loop)
+        # 仅在无选项时显示回复面板（有选项时由选择框负责显示）
+        from keenius.agent.display import print_response_panel
+        if not _extract_options(response) and not _extract_multi_questions(response):
+            print_response_panel(response, loop.phase)
 
         # 有意义的对话后自动保存
         _auto_save_silent(loop)
@@ -1506,12 +1501,9 @@ def _run_repl_loop(loop: ConversationLoop) -> None:
                 combined = "；".join(answers)
                 follow_up = loop.send_message(combined)
                 _auto_save_silent(loop)
-                chat_display.display_response(
-                    follow_up,
-                    phase=loop.phase,
-                    reasoning_text=loop._last_reasoning
-                )
-                loop._last_reasoning = ""
+                _display_reasoning(loop)
+                if not _extract_options(follow_up) and not _extract_multi_questions(follow_up):
+                    print_response_panel(follow_up, loop.phase)
             continue
 
         # ── 单问题选择 ──
@@ -1525,11 +1517,9 @@ def _run_repl_loop(loop: ConversationLoop) -> None:
                 break
             follow_up = loop.send_message(selected)
             _auto_save_silent(loop)
-            chat_display.display_response(
-                follow_up,
-                phase=loop.phase,
-                reasoning_text=loop._last_reasoning
-            )
+            _display_reasoning(loop)
+            if not _extract_options(follow_up) and not _extract_multi_questions(follow_up):
+                print_response_panel(follow_up, loop.phase)
             loop._last_reasoning = ""
             opt_result = _extract_options(follow_up)
         if pick_chain > 0:
