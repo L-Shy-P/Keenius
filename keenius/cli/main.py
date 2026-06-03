@@ -70,8 +70,57 @@ def _start_fresh(args) -> None:
 
 
 def _start_with_session(data: dict) -> None:
-    from keenius.cli.shell import run_shell_with_session
-    run_shell_with_session(data)
+    from keenius.cli.app import KeeniusApp
+    from keenius.agent.loop import ConversationLoop
+
+    loop = ConversationLoop.from_dict(data)
+
+    # 先用 Rich 把历史消息打印到终端（进入 scrollback）
+    _print_history_rich(data.get("messages", []), loop.phase)
+
+    app = KeeniusApp(loop=loop, slash_handler=_make_slash_handler(loop))
+    app._load_history(data.get("messages", []))
+    if app._pending_options:
+        opts, question = app._pending_options
+        app.enter_question_picker(opts, question)
+    app.run()
+
+
+def _print_history_rich(messages: list[dict], phase: str = ""):
+    """用 Rich 把历史消息打印到终端，进入 scrollback 缓冲区。"""
+    from keenius.agent.display import (
+        console, print_user_label, print_response_panel,
+        print_reasoning_box_open, print_reasoning_text, print_reasoning_box_close,
+        print_tool_call, print_tool_result, print_system_notice,
+    )
+    for m in messages:
+        role = m.get("role", "")
+        content = m.get("content", "") or ""
+        if role == "system":
+            continue
+        if role == "user":
+            if content.startswith("[系统通知]"):
+                print_system_notice(content.removeprefix("[系统通知]").strip())
+            elif content.strip():
+                print_user_label(content)
+            continue
+        if role == "assistant":
+            reasoning = m.get("reasoning_content", "")
+            tool_calls = m.get("tool_calls")
+            if reasoning:
+                text = reasoning[:400] + ("..." if len(reasoning) > 400 else "")
+                print_reasoning_box_open()
+                print_reasoning_text(text)
+                print_reasoning_box_close()
+            if tool_calls:
+                for tc in tool_calls:
+                    fn = tc.get("function", {})
+                    print_tool_call(fn.get("name", "?"), fn.get("arguments", "")[:80])
+            if content:
+                print_response_panel(content, phase)
+            continue
+        if role == "tool":
+            print_tool_result((content or "").replace("\n", " ")[:100])
 
 
 def _warn_multiple_sessions(sessions: list[dict]) -> None:
@@ -91,7 +140,33 @@ def _show_session_picker(sessions: list[dict]) -> dict | str | None:
     from keenius.cli.shell import session_picker
     print_logo()
     print_welcome()
-    return session_picker(sessions)
+
+    loop = ConversationLoop()
+    app = KeeniusApp(loop=loop)
+    result: list = [None]
+
+    def on_selected(session):
+        result[0] = session
+        app.exit()
+
+    app.set_session_handler(on_selected)
+    app.enter_session_picker(sessions)
+    app.run()
+    return result[0]
+
+
+def _make_slash_handler(loop):
+    """创建斜杠命令处理器，桥接 shell.py 的 handle_slash_command。"""
+    from keenius.cli.shell import handle_slash_command
+
+    def handler(text: str) -> str | None:
+        ctx = {"loop": loop}
+        cmd = text.strip().lower()
+        if cmd in ("/exit", "/quit", "/q"):
+            return "EXIT"
+        return handle_slash_command(text, ctx)
+
+    return handler
 
 
 if __name__ == "__main__":
