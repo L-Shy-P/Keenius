@@ -91,6 +91,8 @@ APP_STYLE = Style.from_dict({
 # 消息格式化
 # ═══════════════════════════════════════════════════════
 
+from keenius.agent.display import _wrap_by_width  # noqa: E402
+
 def _display_width(text: str) -> int:
     """计算字符串的终端显示宽度（CJK/emoji 算 2 列）。"""
     w = 0
@@ -108,25 +110,6 @@ def _pad(text: str, width: int) -> str:
         return text
     return text + " " * (width - dw)
 
-def _wrap_by_width(text: str, max_w: int) -> list[str]:
-    """按显示宽度将文本拆成多行。"""
-    if not text:
-        return [""]
-    lines = []
-    current = ""
-    cw = 0
-    for ch in text:
-        chw = 2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
-        if cw + chw > max_w:
-            lines.append(current)
-            current = ch
-            cw = chw
-        else:
-            current += ch
-            cw += chw
-    if current:
-        lines.append(current)
-    return lines or [""]
 
 def _fmt_user(text: str) -> list[tuple[str, str]]:
     text = text or ""
@@ -207,13 +190,17 @@ def _fmt_reasoning(text: str) -> list[tuple[str, str]]:
     text = text or ""
     max_w = _term_width() - 10
     r: list[tuple[str, str]] = [("", "\n")]
-    r.append(("fg:gray italic", "  ╭ 思考过程\n"))
+    r.append(("fg:ansibrightblack bold", "  ● 思考过程\n"))
+    r.append(("fg:ansibrightblack", "  ╭\n"))
     for line in text.split("\n"):
+        if not line.strip():
+            r.append(("fg:ansibrightblack", "  │\n"))
+            continue
         for chunk in _wrap_by_width(line, max_w):
-            r.append(("fg:ansibrightblack", "  │ "))
+            r.append(("fg:ansibrightblack", "  │  "))
             r.append(("fg:gray italic", chunk))
             r.append(("", "\n"))
-    r.append(("fg:gray italic", "  ╰\n"))
+    r.append(("fg:ansibrightblack", "  ╰\n"))
     return r
 
 def _fmt_tool(name: str, preview: str = "") -> list[tuple[str, str]]:

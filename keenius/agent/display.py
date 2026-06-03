@@ -19,6 +19,26 @@ from rich.table import Table
 
 console = Console(force_terminal=True)  # 强制 ANSI，兼容 Windows GBK
 
+
+def _wrap_by_width(text: str, max_w: int) -> list[str]:
+    """按显示宽度将文本拆成多行（CJK/emoji 算 2 列）。"""
+    if not text:
+        return [""]
+    lines, current, cw = [], "", 0
+    for ch in text:
+        chw = cell_len(ch)
+        if cw + chw > max_w:
+            lines.append(current)
+            current = ch
+            cw = chw
+        else:
+            current += ch
+            cw += chw
+    if current:
+        lines.append(current)
+    return lines or [""]
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # 品牌与阶段颜色
 # ═══════════════════════════════════════════════════════════════════════
@@ -112,20 +132,26 @@ def print_user_label(text: str) -> None:
 
 
 def print_reasoning_box_open() -> None:
-    """打开推理/思考框 — Hermes 风格 ┌─ 思考过程 ──┐。"""
+    """打开推理/思考标记 — 左侧竖线样式。"""
     console.print()
-    console.print("[bright_black]┌─ 思考过程 ──────────────────────────────┐[/bright_black]")
+    console.print("[bold bright_black]● 思考过程[/bold bright_black]")
+    console.print("[bright_black]  ╭[/bright_black]")
 
 
 def print_reasoning_text(text: str) -> None:
-    """在打开的推理框中打印推理内容。"""
+    """在推理标记中打印推理内容，手动换行避免终端截断。"""
+    max_w = console.width - 6
     for line in text.split("\n"):
-        console.print(f"[bright_black]│[/bright_black] [dim italic]{_escape(line)}[/dim italic]")
+        if not line.strip():
+            console.print("[bright_black]  │[/bright_black]")
+            continue
+        for chunk in _wrap_by_width(line, max_w):
+            console.print(f"[bright_black]  │[/bright_black]  [dim italic]{_escape(chunk)}[/dim italic]")
 
 
 def print_reasoning_box_close() -> None:
-    """关闭推理框 — Hermes 风格 └──────────────────┘。"""
-    console.print("[bright_black]└──────────────────────────────────────────┘[/bright_black]")
+    """关闭推理标记。"""
+    console.print("[bright_black]  ╰[/bright_black]")
 
 
 def print_tool_call(name: str, preview: str = "") -> None:
