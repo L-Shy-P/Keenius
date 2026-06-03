@@ -138,6 +138,8 @@ def _show_session_picker(sessions: list[dict]) -> dict | str | None:
     """显示交互式会话选择器，包含 logo 和欢迎信息。"""
     from keenius.agent.display import print_logo, print_welcome
     from keenius.cli.shell import session_picker
+    from keenius.cli.app import KeeniusApp
+    from keenius.agent.loop import ConversationLoop
     print_logo()
     print_welcome()
 
