@@ -1,4 +1,4 @@
-﻿"""Keenius 配置管理。
+"""Keenius 配置管理。
 
 从 .env 文件和 config.yaml 读取配置。API 密钥放在 .env 中，
 教学偏好放在 config.yaml 中。
@@ -49,8 +49,8 @@ def save_config(config: dict) -> None:
 
 
 DEFAULT_CONFIG = {
-    "model": "gpt-4o",
-    "api_base": "https://api.openai.com/v1",
+    "model": "deepseek-v4-flash",
+    "api_base": "https://api.deepseek.com",
     "language": "zh",
     "teaching_style": "socratic",
     "temperature": 0.7,

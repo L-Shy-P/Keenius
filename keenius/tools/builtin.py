@@ -1,4 +1,4 @@
-﻿"""Keenius agent 的内置教学工具。
+"""Keenius agent 的内置教学工具。
 
 所有工具描述均为中文，因为主要教学语言是中文。
 工具通过 @register_tool 装饰器注册 —— 只需导入此模块即可让 agent 使用它们。

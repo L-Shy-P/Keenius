@@ -1,4 +1,4 @@
-﻿"""会话管理器 — 全局存储。可通过配置固定 / 自动加载。"""
+"""会话管理器 — 全局存储。可通过配置固定 / 自动加载。"""
 
 from __future__ import annotations
 import json

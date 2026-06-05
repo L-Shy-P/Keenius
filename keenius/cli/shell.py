@@ -1,4 +1,4 @@
-﻿"""基于 prompt-toolkit 的交互式 REPL shell。
+"""基于 prompt-toolkit 的交互式 REPL shell。
 
 这是主要的用户界面 — 与 Keenius 的富终端聊天界面。
 """

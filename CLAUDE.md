@@ -1,4 +1,4 @@
-﻿# Keenius CLI Standards
+﻿﻿﻿﻿# Keenius CLI Standards
 
 ## 强制规则
 
@@ -35,3 +35,22 @@
 - 配置 ~/.keenius/，计划 ~/.keenius/plans/，画像 ~/.keenius/profiles/
 - 核心文件: tutor/prompts.py（提示词）、cli/shell.py（REPL）、agent/loop.py（对话循环）
 - 工具: tools/builtin.py（教学工具）、tools/registry.py（注册系统）
+
+## 推送与版本号规范
+
+### 版本号格式：V a.b.c 或 V a.b.c.fix
+
+| 变更类型             | 版本号变化     | 示例                    |
+| -------------------- | -------------- | ----------------------- |
+| 系统级功能（架构重构） | a++            | v1.0.0 → v2.0.0        |
+| 新增功能（中等规模）   | b++            | v0.3.0 → v0.4.0        |
+| 问题修复（中等规模）   | c++            | v0.3.1 → v0.3.2        |
+| 紧急修复（无法运行）   | 加 .fix 后缀   | v0.3.1 → v0.3.1.fix    |
+| 无版本号变更           | 不改版本号     | 仅提交，不更新版本号     |
+
+### 推送规则
+
+1. **绝不主动推送**。完成修改后，询问用户："要推送 V a.b.c 版本吗？"
+2. 用户确认后才执行 `git add` → `git commit` → `git push`。
+3. 推送前更新 `keenius/__init__.py` 中的 `__version__` 字段。
+4. commit message 使用英文，格式：`v<版本号>: <简要描述>`

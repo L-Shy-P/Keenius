@@ -8,7 +8,12 @@
 
 from __future__ import annotations
 from dataclasses import dataclass, field
-import re, time as _time, unicodedata
+import re, sys, time as _time
+
+# Windows 修复：ProactorEventLoop 的 socket 泄漏导致 WinError 10055
+if sys.platform == "win32":
+    import asyncio
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 def _log(msg: str):
     try:
@@ -39,7 +44,6 @@ from prompt_toolkit.input.defaults import create_input
 class AppState:
     mode: str = "repl"
     phase: str = "diagnosis"
-    messages: list[list[tuple[str, str]]] = field(default_factory=list)
     thinking: bool = False
 
     # QuestionPicker
@@ -91,141 +95,100 @@ APP_STYLE = Style.from_dict({
 # 消息格式化
 # ═══════════════════════════════════════════════════════
 
-from keenius.agent.display import _wrap_by_width  # noqa: E402
+# ReasoningRenderer 已移除 — 推理通过 _cprint 直接输出到终端
+from keenius.agent.display import (  # noqa: E402
+    A_RESET, A_BOLD, A_DIM, A_ITALIC, A_CYAN, A_GREEN, A_YELLOW, A_RED,
+    A_GRAY, A_CYAN_BOLD, A_GREEN_BOLD, A_DIM_ITALIC,
+    fmt_user_msg, fmt_box_open, fmt_box_line, fmt_box_close,
+    fmt_error, fmt_static_picker, PickerRenderer, ReasoningRenderer,
+)
 
-def _display_width(text: str) -> int:
-    """计算字符串的终端显示宽度（CJK/emoji 算 2 列）。"""
-    w = 0
-    for ch in text:
-        if unicodedata.east_asian_width(ch) in ("W", "F"):
-            w += 2
+# _display_width / _pad 已移至 display.py
+from keenius.agent.display import _display_width, _pad  # noqa: E402
+
+
+# ═══════════════════════════════════════════════════════
+# 安全终端输出（兼容 prompt_toolkit）
+# ═══════════════════════════════════════════════════════
+
+# ANSI 颜色常量已移至 display.py（A_RESET, A_CYAN, ...）
+
+
+def _cprint(text: str = ""):
+    """安全地将文本输出到终端（兼容 prompt_toolkit 的 full_screen=False）。
+    从后台线程调用时通过 call_soon_threadsafe + run_in_terminal 路由。"""
+    import threading
+    from prompt_toolkit.application import get_app_or_none, run_in_terminal
+
+    def _do_print():
+        print(text, flush=True)
+
+    app = None
+    try:
+        app = get_app_or_none()
+    except Exception:
+        pass
+
+    if app is None or not app._is_running:
+        _do_print()
+        return
+
+    try:
+        loop = app.loop
+        if threading.current_thread() is not threading.main_thread():
+            import functools
+            loop.call_soon_threadsafe(
+                loop.call_soon,
+                functools.partial(run_in_terminal, _do_print, in_executor=False),
+            )
         else:
-            w += 1
-    return w
-
-def _pad(text: str, width: int) -> str:
-    """将文本用空格填充到指定显示宽度。"""
-    dw = _display_width(text)
-    if dw >= width:
-        return text
-    return text + " " * (width - dw)
+            run_in_terminal(_do_print, in_executor=False)()
+    except Exception:
+        _do_print()
 
 
-def _fmt_user(text: str) -> list[tuple[str, str]]:
-    text = text or ""
-    lines = text.split("\n")
-    r: list[tuple[str, str]] = [("", "\n"), ("bold fg:ansicyan", "● 你：")]
-    r.append(("fg:gray", lines[0] if lines else ""))
-    for line in lines[1:]:
-        r.append(("", "\n")); r.append(("fg:gray", f"      {line}"))
-    r.append(("", "\n")); return r
-
-def _fmt_assistant_with_options(question: str, options: list[dict]) -> list[tuple[str, str]]:
-    """格式化含选项的历史助手消息——选项显示为 dim 列表（不可交互）。
-    边框字符单独着色，避免被内容文字样式污染。"""
-    w = _term_width() - 6
-    inner_w = w - 4
-    bc = "fg:ansicyan"
-    r: list[tuple[str, str]] = [("", "\n")]
-    r.append((bc, "╭─ Keenius "))
-    r.append((bc, "─" * (w - 12)))
-    r.append((bc, "╮\n"))
-    if question:
-        for line in question.split("\n"):
-            r.append((bc, "│ "))
-            r.append(("", _pad(line, inner_w)))
-            r.append((bc, " │"))
-            r.append(("", "\n"))
-        r.append((bc, "│ "))
-        r.append((bc, "─" * (w - 2)))
-        r.append((bc, " │"))
-        r.append(("", "\n"))
-    for opt in options:
-        if opt.get("separator"):
-            r.append((bc, "│ "))
-            r.append(("fg:gray italic", _pad(f"  ── {opt['text']}"[:inner_w], inner_w)))
-            r.append((bc, " │"))
-            r.append(("", "\n"))
-        else:
-            r.append((bc, "│ "))
-            r.append(("fg:gray", _pad(f"  [{opt['num']}] {opt['text'][:inner_w - 10]}"[:inner_w], inner_w)))
-            r.append((bc, " │"))
-            r.append(("", "\n"))
-    r.append((bc, "╰"))
-    r.append((bc, "─" * (w - 2)))
-    r.append((bc, "╯\n"))
-    return r
+def _cprint_user(text: str):
+    for line in fmt_user_msg(text):
+        _cprint(line)
 
 
-def _fmt_assistant(text: str, width: int = 0, phase: str = "") -> list[tuple[str, str]]:
-    """ROUNDED box ╭─╮╰╯ + 阶段颜色，匹配旧版 print_response_panel。
-    边框字符单独着色，避免被内容文字样式污染。"""
-    text = text or ""
-    if width <= 0:
-        import shutil
-        width = max(shutil.get_terminal_size().columns - 6, 40)
-    w = width
-    inner_w = w - 4  # "│ " + content + " │"
-    color = "fg:ansicyan"
-    if phase == "diagnosis": color = "fg:ansicyan"
-    elif phase == "planning": color = "fg:ansiyellow"
-    elif phase == "learning": color = "fg:ansigreen"
-    elif phase == "end": color = "fg:gray"
+def _cprint_box_open():
+    _cprint(fmt_box_open())
 
-    r: list[tuple[str, str]] = [("", "\n")]
-    r.append((color, "╭─ Keenius "))
-    r.append((color, "─" * (w - 12)))
-    r.append((color, "╮\n"))
-    for line in text.split("\n"):
-        r.append((color, "│ "))
-        r.append(("", _pad(line, inner_w)))
-        r.append((color, " │"))
-        r.append(("", "\n"))
-    r.append((color, "╰"))
-    r.append((color, "─" * (w - 2)))
-    r.append((color, "╯\n"))
-    return r
 
-def _fmt_reasoning(text: str) -> list[tuple[str, str]]:
-    text = text or ""
-    max_w = _term_width() - 10
-    r: list[tuple[str, str]] = [("", "\n")]
-    r.append(("fg:ansibrightblack bold", "  ● 思考过程\n"))
-    r.append(("fg:ansibrightblack", "  ╭\n"))
-    for line in text.split("\n"):
-        if not line.strip():
-            r.append(("fg:ansibrightblack", "  │\n"))
-            continue
-        for chunk in _wrap_by_width(line, max_w):
-            r.append(("fg:ansibrightblack", "  │  "))
-            r.append(("fg:gray italic", chunk))
-            r.append(("", "\n"))
-    r.append(("fg:ansibrightblack", "  ╰\n"))
-    return r
+def _cprint_box_line(line: str):
+    _cprint(fmt_box_line(line))
 
-def _fmt_tool(name: str, preview: str = "") -> list[tuple[str, str]]:
-    name = name or ""
-    preview = preview or ""
-    r: list[tuple[str, str]] = [("fg:ansicyan", f"  ┊ ● {name}")]
-    if preview: r.append(("fg:gray", f": {preview[:80]}"))
-    r.append(("", "\n")); return r
 
-def _fmt_tool_result(preview: str = "") -> list[tuple[str, str]]:
-    preview = preview or ""
-    short = preview.replace("\n", " ")[:100]
-    return [("fg:ansigreen", f"  ┊ ✓ {short}"), ("", "\n")]
+def _cprint_box_close():
+    for line in fmt_box_close():
+        _cprint(line)
 
-def _fmt_error(msg: str) -> list[tuple[str, str]]:
-    msg = msg or ""
-    return [("fg:ansired", f"✗ {msg}"), ("", "\n")]
 
-def _fmt_info(msg: str) -> list[tuple[str, str]]:
-    msg = msg or ""
-    return [("fg:gray", f"  {msg}"), ("", "\n")]
+def _cprint_reasoning_open():
+    _cprint(ReasoningRenderer.ansi_title())
+    _cprint(ReasoningRenderer.ansi_open())
 
-def _fmt_notice(text: str) -> list[tuple[str, str]]:
-    text = text or ""
-    return [("", "\n"), ("fg:ansiyellow", f"⚡ {text}"), ("", "\n")]
+
+def _cprint_reasoning_line(line: str) -> int:
+    lines = ReasoningRenderer.ansi_line(line)
+    for l in lines:
+        _cprint(l)
+    return len(lines)
+
+
+def _cprint_reasoning_close(content_lines: int = 0):
+    _cprint(ReasoningRenderer.ansi_close())
+
+
+def _cprint_static_picker(options, question="", cursor=0, checked=None):
+    for line in fmt_static_picker(options, question, cursor, checked):
+        _cprint(line)
+
+
+def _cprint_error(msg: str):
+    for line in fmt_error(msg):
+        _cprint(line)
 
 
 # ═══════════════════════════════════════════════════════
@@ -240,10 +203,19 @@ def _term_width() -> int:
         return 80
 
 def _clip(text: str, max_w: int) -> str:
-    """截断文本使不超过 max_w 个字符，追加 ... 标记。"""
-    if len(text) <= max_w:
+    """按显示宽度截断单行文本（CJK 算 2 列），超出追加 …。"""
+    text = text.replace("\n", " ")
+    if _display_width(text) <= max_w:
         return text
-    return text[:max(0, max_w - 1)] + "…"
+    result = ""
+    cw = 0
+    for ch in text:
+        chw = _display_width(ch)
+        if cw + chw > max_w - 1:
+            return result + "…"
+        result += ch
+        cw += chw
+    return result + "…"
 
 # ═══════════════════════════════════════════════════════
 # 选项解析
@@ -295,11 +267,9 @@ def extract_multi_questions(text: str) -> list[dict] | None:
 class KeeniusApp:
     """统一 prompt_toolkit Application — 所有交互（REPL、picker、session、curriculum）
     在一个 layout tree 中通过 _render_body() 切换内容。"""
-    def __init__(self, loop, slash_handler=None, messages=None):
+    def __init__(self, loop, slash_handler=None):
         self.loop = loop
         self.state = AppState()
-        if messages:
-            self.state.messages = messages
         self._slash_handler = slash_handler
         self._msg_buffer = Buffer(multiline=False, name="input")
         self._input_control = BufferControl(buffer=self._msg_buffer)
@@ -311,7 +281,7 @@ class KeeniusApp:
         self._on_session_selected = None
         self._pending_options = None  # (options_list, question) 未完成的选项
         self._build()
-        _log(f"KeeniusApp init: mode={self.state.mode}, msgs={len(self.state.messages)}, sessions={len(self._sessions)}")
+        _log(f"KeeniusApp init: mode={self.state.mode}, sessions={len(self._sessions)}")
 
     def set_session_handler(self, handler):
         self._on_session_selected = handler
@@ -422,170 +392,53 @@ class KeeniusApp:
     # ── Render ──
 
     def _render_body(self) -> FormattedText:
-        """唯一 body render：mode 决定内容，layout 结构不变。"""
+        """唯一 body render：mode 决定内容。消息在终端 scrollback 中。"""
         st = self.state
-        if st.mode == "repl":
-            return self._render_messages()
-        elif st.mode == "question":
-            return self._render_messages_with_picker(self._render_question())
+        if st.mode == "question":
+            return self._render_question()
         elif st.mode == "multi_q":
-            return self._render_messages_with_picker(self._render_multi_q())
+            return self._render_multi_q()
         elif st.mode == "session":
-            return self._render_messages_with_picker(self._render_session())
+            return self._render_session()
         elif st.mode == "curriculum":
-            return self._render_messages_with_picker(self._render_curriculum())
-        return self._render_messages()
-
-    def _render_messages_with_picker(self, picker_fragments) -> FormattedText:
-        """picker 模式：消息已通过 Rich 打印到终端 scrollback，body 只渲染 picker。"""
-        return FormattedText(picker_fragments)
-
-    def _render_messages(self) -> FormattedText:
-        parts: list[tuple[str, str]] = []
-        for msg in self.state.messages:
-            parts.extend(msg)
-        if not parts:
-            bc = "fg:ansicyan bold"
-            w = _term_width() - 6
-            parts.append((bc, "╭─ Keenius ─"))
-            parts.append((bc, "─" * (w - 12)))
-            parts.append((bc, "╮\n"))
-            parts.append((bc, "│ "))
-            parts.append(("", _pad("输入问题开始对话...", w - 4)))
-            parts.append((bc, " │"))
-            parts.append(("", "\n"))
-            parts.append((bc, "╰"))
-            parts.append((bc, "─" * (w - 2)))
-            parts.append((bc, "╯\n"))
-        if self.state.thinking:
-            _SPIN = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
-            idx = int(_time.time() * 8) % len(_SPIN)
-            parts.append(("", "\n"))
-            parts.append(("fg:gray", f"  {_SPIN[idx]} 思考中...\n"))
-        return FormattedText(parts)
+            return self._render_curriculum()
+        # repl 模式：body 为空（消息在终端 scrollback 中）
+        return FormattedText([("", "")])
 
     def _render_question(self) -> FormattedText:
         st = self.state
-        w = _term_width() - 6; max_w = w
-        f: list[tuple[str, str]] = []
-
-        bc = "fg:ansiyellow" if st.qp_editing else ("fg:ansiblue bold" if st.qp_is_multi else "fg:ansicyan bold")
-        title = "编辑选项" if st.qp_editing else ("请选择（可多选）" if st.qp_is_multi else "请选择")
-        f.append((bc, "┏━━ "))
-        f.append((bc, f"{title} "))
-        f.append((bc, "━" * (w - 2 - _display_width(title))))
-        f.append((bc, "┓\n"))
-
-        if st.qp_question:
-            f.append((bc, "┃ "))
-            f.append(("fg:white bold", _pad(_clip(st.qp_question, max_w), max_w)))
-            f.append((bc, " ┃"))
-            f.append(("", "\n"))
-            f.append((bc, "┃ "))
-            f.append((bc, "─" * max_w))
-            f.append((bc, " ┃"))
-            f.append(("", "\n"))
-
-        for i, opt in enumerate(st.qp_options):
-            if opt.get("separator"):
-                f.append((bc, "┃ "))
-                f.append(("fg:gray italic", _pad(f"  ── {opt['text']}"[:max_w], max_w)))
-                f.append((bc, " ┃"))
-                f.append(("", "\n"))
-                continue
-            sel = i == st.qp_cursor
-            chk = "✓" if i in st.qp_checked else " "
-            txt = _clip(opt["text"], max_w - 4)
-            if st.qp_editing and sel:
-                edit_txt = _clip(self._edit_buffer.text, max_w - 6)
-                content = f" ✎ [{opt['num']}] {edit_txt}"
-                f.append((bc, "┃ "))
-                f.append(("reverse", _pad(content[:max_w], max_w)))
-                f.append((bc, " ┃"))
-                f.append(("", "\n"))
-            elif sel:
-                content = f" [{chk}] [{opt['num']}] {txt}"
-                f.append((bc, "┃ "))
-                f.append(("reverse", _pad(content[:max_w], max_w)))
-                f.append((bc, " ┃"))
-                f.append(("", "\n"))
-            else:
-                dm = "✓" if i in st.qp_checked else " "
-                content = f"  [{dm}] [{opt['num']}] {txt}"
-                f.append((bc, "┃ "))
-                f.append(("", _pad(content[:max_w], max_w)))
-                f.append((bc, " ┃"))
-                f.append(("", "\n"))
-
-        if st.qp_checked:
-            f.append((bc, "┃ "))
-            f.append(("bold fg:ansigreen", _pad(f" 已选 {len(st.qp_checked)} 项", max_w)))
-            f.append((bc, " ┃"))
-            f.append(("", "\n"))
-        hint = "✎ 编辑中  Enter确认  Esc取消" if st.qp_editing else "↑↓选  Space编辑  +多选  Enter确认  Esc取消"
-        f.append((bc, "┃ "))
-        f.append(("fg:gray", _pad(hint, max_w)))
-        f.append((bc, " ┃"))
-        f.append(("", "\n"))
-        f.append((bc, "┗"))
-        f.append((bc, "━" * (w + 2)))
-        f.append((bc, "┛\n"))
-        f.append(("", "\n"))
-
-        ibc = "fg:ansicyan bold" if st.qp_editing else "fg:gray"
-        inp_title = "输入"
-        f.append((ibc, "┏━━ "))
-        f.append((ibc, f"{inp_title} "))
-        f.append((ibc, "━" * (w - 2 - _display_width(inp_title))))
-        f.append((ibc, "┓\n"))
-        if st.qp_editing:
-            f.append((ibc, "┃ "))
-            f.append(("fg:white bold", _pad(f" ▸ {self._edit_buffer.text} ▌", max_w)))
-            f.append((ibc, " ┃"))
-            f.append(("", "\n"))
-        else:
-            f.append((ibc, "┃ "))
-            f.append(("fg:gray", _pad(" ▸ 在此输入补充文字...", max_w)))
-            f.append((ibc, " ┃"))
-            f.append(("", "\n"))
-        f.append((ibc, "┗"))
-        f.append((ibc, "━" * (w + 2)))
-        f.append((ibc, "┛\n"))
-        f.append(("", "\n"))
+        f = PickerRenderer.render_single(
+            st.qp_options, st.qp_cursor, st.qp_checked,
+            st.qp_editing, st.qp_is_multi,
+            self._edit_buffer.text if st.qp_editing else "",
+        )
+        f.extend(PickerRenderer.render_input(
+            self._edit_buffer.text if st.qp_editing else "",
+            st.qp_editing,
+        ))
         return FormattedText(f)
 
     def _render_multi_q(self) -> FormattedText:
-        st = self.state; f: list[tuple[str, str]] = []
-        max_w = _term_width() - 12  # 前缀 " ▶ [N] " 的宽度
-        for qi, q in enumerate(st.mq_questions):
-            focus = qi == st.mq_q_idx
-            f.append(("bold fg:ansicyan" if focus else "fg:gray",
-                      f"Q{qi+1}/{len(st.mq_questions)}: {_clip(q.get('text',''), 60)}\n"))
-            for oi, opt in enumerate(q.get("options", [])):
-                cur = oi == st.mq_o_idx[qi]; sel = st.mq_selected[qi] == oi
-                txt = _clip(opt["text"], max_w)
-                if focus and cur: f.append(("reverse", f" ▶ [{opt['num']}] {txt}\n"))
-                elif sel: f.append(("bold fg:ansigreen", f"   ✓ [{opt['num']}] {txt}\n"))
-                else: f.append(("", f"     [{opt['num']}] {txt}\n"))
-            f.append(("", "\n"))
-        all_ok = all(s is not None for s in st.mq_selected)
-        if all_ok: f.append(("bold fg:ansigreen", "全部已答 — Enter 确认\n"))
-        else: f.append(("fg:ansiyellow", f"⚠ {[i+1 for i,s in enumerate(st.mq_selected) if s is None]} 未选\n"))
-        f.append(("fg:gray", "← →:Q ↑↓:opt Space:sel Enter:confirm Esc:cancel\n"))
-        return FormattedText(f)
+        st = self.state
+        return FormattedText(PickerRenderer.render_multi_q(
+            st.mq_questions, st.mq_q_idx, st.mq_o_idx, st.mq_selected,
+        ))
 
     def _render_session(self) -> FormattedText:
         st = self.state; sessions = self._sessions
         w = _term_width() - 6; inner_w = w
         f: list[tuple[str, str]] = []
 
-        bc = "fg:ansicyan bold" if not st.sp_renaming else "fg:ansiyellow bold"
-        title = "会话列表" if not st.sp_renaming else "重命名"
+        bc = "fg:ansiyellow bold" if st.sp_renaming else "fg:ansibrightcyan bold"
+        title = "重命名" if st.sp_renaming else "会话列表"
         pad_title = f" {title} "
+        title_w = _display_width(pad_title)
+        left_fill = (w + 2 - title_w) // 2
+        right_fill = w + 2 - title_w - left_fill
         f.append((bc, "┏"))
-        f.append((bc, "━" * (w - _display_width(pad_title))))
-        f.append((bc, f"{pad_title}"))
-        f.append((bc, "━━"))
+        f.append((bc, "━" * left_fill))
+        f.append((bc, pad_title))
+        f.append((bc, "━" * right_fill))
         f.append((bc, "┓\n"))
 
         for i, s in enumerate(sessions):
@@ -707,20 +560,89 @@ class KeeniusApp:
              f" │ {getattr(self.loop, 'model', '?')} │ {getattr(self.loop, 'turn_count', 0)} 轮 │ {labels.get(st.mode, st.mode)}"),
         ])
 
-    # ── LLM 调用（异步 — 后台线程 + 流式回调） ──
+    # ── LLM 调用（后台线程 + body 流式更新） ──
 
     def _call_llm(self, text: str, as_user: bool = True):
-        """同步调用 LLM。阻塞事件循环直到返回。
-        LLM 调用期间拦截 display.print_tool_call/result 的 Rich 输出（避免双渲染器冲突），
-        改为收集为 FormattedText 消息。
-        """
-        _log(f"_call_llm: text='{text[:50]}', as_user={as_user}, mode={self.state.mode}")
+        """后台线程调用 LLM。消息通过 _cprint 安全输出到终端。"""
+        _log(f"_call_llm: text='{text[:50]}', as_user={as_user}")
+
+        # 旧 picker → 静态文本打印到终端
+        if self.state.qp_options:
+            _cprint_static_picker(
+                self.state.qp_options, self.state.qp_question,
+                self.state.qp_cursor, self.state.qp_checked,
+            )
+
+        # 清除 picker 状态
+        self.state.mode = "repl"
+        self.state.qp_options = []
+        self.state.qp_cursor = 0
+        self.state.qp_checked = set()
+        self.state.qp_question = ""
+
+        # 用户消息 → 直接打印
         if as_user and text.strip():
-            self.add_message(_fmt_user(text.strip()))
+            _cprint_user(text.strip())
+
         self.state.thinking = True
         self._invalidate()
 
-        # 拦截 Rich 工具调用输出，避免直接写终端绕过 prompt_toolkit screen buffer
+        # 推理回调：行级缓冲，实时输出
+        reasoning_buf: list[str] = []
+        reasoning_opened = False
+        reasoning_line_count = 0
+        def _flush_reasoning():
+            """刷新推理缓冲并关闭推理框。"""
+            nonlocal reasoning_opened, reasoning_line_count
+            remaining_r = "".join(reasoning_buf)
+            reasoning_buf.clear()
+            if remaining_r.strip():
+                if not reasoning_opened:
+                    reasoning_opened = True
+                    _cprint_reasoning_open()
+                reasoning_line_count += _cprint_reasoning_line(remaining_r)
+            if reasoning_opened:
+                _cprint_reasoning_close(reasoning_line_count)
+                reasoning_opened = False
+                reasoning_line_count = 0
+
+        def _on_reasoning(token: str):
+            nonlocal reasoning_opened, reasoning_line_count
+            reasoning_buf.append(token)
+            combined = "".join(reasoning_buf)
+            while "\n" in combined:
+                line, rest = combined.split("\n", 1)
+                reasoning_buf.clear()
+                reasoning_buf.append(rest)
+                combined = rest
+                if not reasoning_opened:
+                    reasoning_opened = True
+                    _cprint_reasoning_open()
+                if line.strip():
+                    reasoning_line_count += _cprint_reasoning_line(line)
+
+        # 流式输出：行级缓冲，按行打印到终端
+        stream_buf: list[str] = []
+        stream_opened = False
+        def _on_token(token: str):
+            nonlocal stream_opened
+            # 收到第一个回复 token 时，先关闭推理框
+            if reasoning_opened or reasoning_buf:
+                _flush_reasoning()
+            stream_buf.append(token)
+            combined = "".join(stream_buf)
+            while "\n" in combined:
+                line, rest = combined.split("\n", 1)
+                stream_buf.clear()
+                stream_buf.append(rest)
+                combined = rest
+                if not stream_opened:
+                    stream_opened = True
+                    _cprint_box_open()
+                if line.strip():
+                    _cprint_box_line(line)
+
+        # 拦截工具调用输出
         collected_tools: list = []
         import keenius.agent.display as _display
         _orig_tc = _display.print_tool_call
@@ -731,9 +653,8 @@ class KeeniusApp:
         _display.print_tool_result = _capture_tr
 
         try:
-            _log(f"_call_llm: calling loop.send_message...")
-            response = self.loop.send_message(text.strip())
-            _log(f"_call_llm: response len={len(response) if response else 0}")
+            response = self.loop.send_message(text.strip(), quiet=True,
+                                              on_token=_on_token, on_reasoning=_on_reasoning)
         except Exception as e:
             _log(f"_call_llm ERROR: {e}")
             self._on_llm_error(str(e))
@@ -742,49 +663,56 @@ class KeeniusApp:
             _display.print_tool_call = _orig_tc
             _display.print_tool_result = _orig_tr
 
+        # 关闭推理框（如果还有未刷新的内容）
+        _flush_reasoning()
+
+        # 输出回复剩余缓冲
+        remaining = "".join(stream_buf)
+        if remaining.strip():
+            if not stream_opened:
+                stream_opened = True
+                _cprint_box_open()
+            _cprint_box_line(remaining)
+        if stream_opened:
+            _cprint_box_close()
+
+        self.state.thinking = False
         self._on_llm_response(response, collected_tools)
 
     def _on_llm_response(self, response: str, collected_tools: list | None = None):
-        _log(f"_on_llm_response: len={len(response) if response else 0}, mode={self.state.mode}")
-        self.state.thinking = False
+        _log(f"_on_llm_response: len={len(response) if response else 0}")
 
-        # 收集到的工具调用 → 格式化为消息
+        # 工具调用 → 安全打印到终端
         if collected_tools:
             for kind, *args in collected_tools:
                 if kind == "call":
-                    self.add_message(_fmt_tool(args[0], args[1] if len(args) > 1 else ""))
+                    _cprint(f"{A_CYAN}  ┊ ● {args[0]}{A_RESET}")
                 elif kind == "result":
-                    self.add_message(_fmt_tool_result(args[0] if args else ""))
+                    short = (args[0] if args else "").replace("\n", " ")[:100]
+                    _cprint(f"{A_GREEN}  ┊ ✓ {short}{A_RESET}")
 
-        reasoning = getattr(self.loop, '_last_reasoning', '')
-        if reasoning:
-            self.add_message(_fmt_reasoning(reasoning[:400]))
-
+        # 多问题模式 → picker
         mq = extract_multi_questions(response)
         if mq:
-            _log(f"_on_llm_response: multi_q detected ({len(mq)} questions)")
             self.enter_multi_question(mq)
             self._invalidate()
             return
 
+        # 选项模式 → picker
         opts = extract_options(response)
         if opts:
-            o, q = opts
-            _log(f"_on_llm_response: options detected ({len(o)} opts)")
-            if q:
-                self.add_message(_fmt_assistant(q))
             self.enter_question_picker(*opts)
             return
 
-        _log(f"_on_llm_response: plain text, adding to messages")
-        self.add_message(_fmt_assistant(response))
+        # 普通回复：已在流式中输出，无需额外处理
+        self.state.mode = "repl"
         self._auto_save()
         self._invalidate()
 
     def _on_llm_error(self, msg: str):
         _log(f"_on_llm_error: {msg}")
         self.state.thinking = False
-        self.add_message(_fmt_error(msg)); self._invalidate()
+        _cprint_error(msg)
 
     def _auto_save(self):
         if getattr(self.loop, 'turn_count', 0) > 0:
@@ -838,14 +766,11 @@ class KeeniusApp:
         st.mode = "curriculum"  # 最后写 mode
         self._invalidate()
 
-    # ── 消息 ──
-
-    def add_message(self, parts: list[tuple[str, str]]):
-        self.state.messages.append(parts)
-
     def _invalidate(self):
-        try: self._app.invalidate()
-        except Exception: pass
+        try:
+            self._app.invalidate()
+        except Exception:
+            pass
 
     # ── KeyBindings ──
 
@@ -867,9 +792,13 @@ class KeeniusApp:
             if text.strip().startswith("/") and self._slash_handler:
                 r = self._slash_handler(text.strip())
                 if r == "EXIT": event.app.exit(); return
-                if r: self.add_message(_fmt_info(r)); self._invalidate()
+                if r: _cprint(f"\n  {r}"); self._invalidate()
                 return
-            self._call_llm(text.strip())
+            st.thinking = True
+            self._invalidate()
+            self._app.invalidate()
+            import threading
+            threading.Thread(target=self._call_llm, args=(text.strip(),), daemon=True).start()
 
         @kb.add("escape", "enter", filter=self._f_repl)
         def _(event): self._msg_buffer.insert_text("\n")
@@ -947,14 +876,19 @@ class KeeniusApp:
                 return
             elif st.qp_checked:
                 result = "；".join(st.qp_options[i]["text"] for i in sorted(st.qp_checked))
-                st.qp_checked.clear(); st.mode = "repl"
-                self.add_message(_fmt_user(result))
-                self._call_llm(result, as_user=False)
+                st.qp_checked.clear()
+                st.thinking = True
+                self._invalidate()
+                self._app.invalidate()
+                import threading
+                threading.Thread(target=self._call_llm, args=(result, True), daemon=True).start()
             else:
                 result = st.qp_options[st.qp_cursor]["text"]
-                st.mode = "repl"
-                self.add_message(_fmt_user(result))
-                self._call_llm(result, as_user=False)
+                st.thinking = True
+                self._invalidate()
+                self._app.invalidate()
+                import threading
+                threading.Thread(target=self._call_llm, args=(result, True), daemon=True).start()
 
         @kb.add("space", filter=self._f_question_nav)
         def _(event):
@@ -1010,8 +944,7 @@ class KeeniusApp:
                 answers.append(f"问题{q['num']}：{q['options'][s]['text']}")
             result = "；".join(answers)
             st.mode = "repl"; st.mq_questions = []
-            self.add_message(_fmt_user(result))
-            self._call_llm(result, as_user=False)
+            self._call_llm(result, as_user=True)
 
         @kb.add("escape", filter=self._f_multi_q)
         def _(event): st.mode = "repl"; st.mq_questions = []

@@ -123,7 +123,7 @@ class ConversationLoop:
         self.messages = new_messages
         self.turn_count = len([m for m in new_messages if m["role"] == "user"])
 
-    def send_message(self, user_input: str) -> str:
+    def send_message(self, user_input: str, quiet: bool = False, on_token=None, on_reasoning=None) -> str:
         """处理用户消息并返回助手回复。"""
         if not self.running:
             self.start()
@@ -137,12 +137,12 @@ class ConversationLoop:
         self._auto_compress()
 
         self.messages.append({"role": "user", "content": user_input})
-        return self._run_agent_loop()
+        return self._run_agent_loop(quiet=quiet, on_token=on_token, on_reasoning=on_reasoning)
 
-    def _run_agent_loop(self) -> str:
+    def _run_agent_loop(self, quiet: bool = False, on_token=None, on_reasoning=None) -> str:
         max_iterations = 8
         for _ in range(max_iterations):
-            response = self._stream_llm()
+            response = self._stream_llm(quiet=quiet, on_token=on_token, on_reasoning=on_reasoning)
             if response is None:
                 return "（没有收到有效回复，请重试）"
             self._detect_phase_transition(response)
@@ -179,12 +179,17 @@ class ConversationLoop:
             self.phase = new_phase
             self._update_system_prompt()
 
-    def _stream_llm(self) -> str | None:
+    def _stream_llm(self, quiet: bool = False, on_token=None, on_reasoning=None) -> str | None:
         """流式传输 LLM 回复，使用 Hermes 风格的边框面板。
 
         内容以纯文本形式在 ╭─ Keenius ──╮ / ╰──────────╯ 框中流式输出。
         当检测到 [N] 选项时，将其标记，调用者（shell）在流式完成后
         显示交互式键盘选择器。选择后，结果追加到历史记录并递归调用本方法。
+
+        Args:
+            quiet: 为 True 时抑制 Rich 输出（供 prompt_toolkit 使用）。
+            on_token: 可选回调 fn(token_text) 在每个 content token 到达时调用。
+            on_reasoning: 可选回调 fn(token_text) 在每个 reasoning token 到达时调用。
         """
 
         tools = registry.get_tool_definitions()
@@ -292,7 +297,8 @@ class ConversationLoop:
         # 内容由调用方通过 print_response_panel 统一展示。
         finish_reason: str | None = None
 
-        display.console.print("[dim]思考中...[/dim]")
+        if not quiet:
+            display.console.print("[dim]思考中...[/dim]")
         try:
             for chunk in stream:
                 choice = chunk.choices[0] if chunk.choices else None
@@ -306,9 +312,13 @@ class ConversationLoop:
 
                 if getattr(delta, "reasoning_content", None):
                     reasoning_parts.append(delta.reasoning_content)
+                    if on_reasoning:
+                        on_reasoning(delta.reasoning_content)
 
                 if delta.content:
                     content_parts.append(delta.content)
+                    if on_token:
+                        on_token(delta.content)
 
                 if delta.tool_calls:
                     for tc in delta.tool_calls:
@@ -329,13 +339,14 @@ class ConversationLoop:
                     if _split_stream(text) or _split_multi_stream(text):
                         options_active = True
 
-            display.console.file.write("\033[1A\033[2K")
-            display.console.file.flush()
+            if not quiet:
+                display.console.file.write("\033[1A\033[2K")
+                display.console.file.flush()
 
             if tool_call_buffer:
                 text = "".join(content_parts)
                 self._handle_streamed_tool_calls(tool_call_buffer, text, "".join(reasoning_parts))
-                return self._run_agent_loop()
+                return self._run_agent_loop(quiet=quiet, on_token=on_token, on_reasoning=on_reasoning)
 
             if content_parts:
                 final_text = "".join(content_parts)
@@ -349,8 +360,9 @@ class ConversationLoop:
 
             return None
         except Exception as exc:
-            display.console.file.write("\033[1A\033[2K")
-            display.console.file.flush()
+            if not quiet:
+                display.console.file.write("\033[1A\033[2K")
+                display.console.file.flush()
             if content_parts:
                 final_text = "".join(content_parts)
                 final_reasoning = "".join(reasoning_parts)
